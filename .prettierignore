@@ -1,0 +1,8 @@
+node_modules
+.svelte-kit
+build
+.wrangler
+static/_moonrun
+static/THIRD_PARTY_NOTICES.txt
+pnpm-lock.yaml
+LICENSE

@@ -1,0 +1,24 @@
+mooncakes-playground
+Copyright 2026 Gakuto Furuya
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+This is an unofficial project and is not affiliated with the MoonBit team.
+Public programs, skills, SKILL.md documents, registry metadata, names and marks
+from mooncakes.io and download.mooncakes.io are third-party content. They are
+fetched on demand and remain subject to their publishers' respective licenses
+and rights. This project's license does not grant rights to that content.
+
+Bundled third-party software includes:
+- Svelte, SvelteKit, Tailwind CSS, daisyUI, clsx, devalue, esm-env: MIT
+- fflate: MIT
+- marked: MIT
+- DOMPurify: Apache-2.0 OR MPL-2.0 (used under Apache-2.0)
+- moonrun-js and its MoonBit-derived components: Apache-2.0
+- @noble/ciphers: MIT
+- SQLite (through moonrun-js): public domain
+- Rust dependencies of moonrun-js wasm components: Apache-2.0, MIT, ISC,
+  BSD-3-Clause, BSL-1.0 and Unicode-DFS-2016; see the complete software notices.
+
+Full license texts, copyright statements, moonrun-js's upstream NOTICE and the
+wasm dependency inventory are in static/THIRD_PARTY_NOTICES.txt, distributed at
+/THIRD_PARTY_NOTICES.txt in the built site. Build-only tools are not deployed.

@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CI: 'true'
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: verify-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
+        with:
+          version: '12.3.4'
+          run_install: false
+
+      # Temporary bridge for the unpublished link dependency. The coordinator
+      # supplies an npm-layout tarball containing package.json, bin/ and prebuilt dist/.
+      # No moonrun-js source build takes place in this workflow.
+      - name: Restore prebuilt moonrun-js package
+        env:
+          ARCHIVE_URL: ${{ vars.MOONRUN_JS_ARCHIVE_URL }}
+          ARCHIVE_SHA256: ${{ vars.MOONRUN_JS_ARCHIVE_SHA256 }}
+        run: |
+          if [ -z "$ARCHIVE_URL" ] || ! [[ "$ARCHIVE_SHA256" =~ ^[a-fA-F0-9]{64}$ ]]; then
+            echo 'Set MOONRUN_JS_ARCHIVE_URL and MOONRUN_JS_ARCHIVE_SHA256 to a prebuilt moonrun-js package tarball.' >&2
+            exit 1
+          fi
+          archive="$RUNNER_TEMP/moonrun-js.tgz"
+          curl --fail --location --proto '=https' --proto-redir '=https' "$ARCHIVE_URL" --output "$archive"
+          printf '%s  %s\n' "$ARCHIVE_SHA256" "$archive" | sha256sum --check -
+          mkdir -p ../moonrun-js
+          tar -xzf "$archive" --strip-components=1 -C ../moonrun-js
+          test -f ../moonrun-js/package.json
+          test -f ../moonrun-js/dist/browser/index.js
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check types and components
+        run: pnpm check
+      - name: Check formatting
+        run: pnpm lint
+      - name: Run unit tests
+        run: pnpm test
+      - name: Build and verify runtime assets
+        run: pnpm build
