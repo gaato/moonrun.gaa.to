@@ -99,6 +99,7 @@
 		warning = '';
 		resolved = [];
 		preloadIssues = {};
+		cliIndex = [];
 		status = 'Loading command index and verified shell…';
 		terminal?.reset();
 		terminal?.write(status);
@@ -114,7 +115,6 @@
 			]);
 			if (!alive || abort.signal.aborted) return;
 			skills = registry;
-			cliIndex = index;
 			const resolver = createResolver(skills, {
 				index,
 				signal: abort.signal,
@@ -127,7 +127,7 @@
 			if (!wasm)
 				throw new Error('No prebuilt cli/sh or sh skill is available.');
 			if (!alive || abort.signal.aborted) return;
-			await resolver.preload({
+			const commands = await resolver.preload({
 				onProgress: ({ completed, total, bytes }) => {
 					if (!alive || abort.signal.aborted) return;
 					status = `Downloading commands ${completed}/${total} (${(bytes / 1024 / 1024).toFixed(1)} MiB ready)`;
@@ -142,6 +142,7 @@
 				}
 			});
 			if (!alive || abort.signal.aborted) return;
+			cliIndex = commands;
 			terminal?.write('\r\n');
 			const running = (session = startSession(
 				wasm,
@@ -256,7 +257,7 @@
 				</li>{/each}
 		</ul>
 	{/if}
-	<h2>CLI modules</h2>
+	<h2>CLI commands</h2>
 	<p class="my-3 text-sm">
 		Modules without prebuilt executables are skipped. Failed downloads retry on
 		use. Reload this page to refresh the version index (cached at the edge for

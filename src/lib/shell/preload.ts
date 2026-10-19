@@ -16,11 +16,13 @@ export async function preloadCommands(
 	index: readonly CliModule[],
 	load: (path: string) => Promise<Uint8Array | undefined>,
 	{ signal, onProgress, onFailure }: PreloadOptions = {}
-): Promise<void> {
+): Promise<CliModule[]> {
 	let next = 0;
 	let completed = 0;
 	let bytes = 0;
-	const report = () => onProgress?.({ completed, total: index.length, bytes });
+	const notCommands = new Set<CliModule>();
+	const report = () =>
+		onProgress?.({ completed, total: index.length - notCommands.size, bytes });
 	report();
 	async function worker() {
 		while (next < index.length) {
@@ -29,8 +31,12 @@ export async function preloadCommands(
 			try {
 				const wasm = await load(cliProgramPath(entry));
 				signal?.throwIfAborted();
-				if (wasm) bytes += wasm.byteLength;
-				else onFailure?.(entry, new Error('No prebuilt executable.'));
+				if (!wasm) {
+					notCommands.add(entry);
+					report();
+					continue;
+				}
+				bytes += wasm.byteLength;
 			} catch (error) {
 				signal?.throwIfAborted();
 				onFailure?.(entry, error);
@@ -41,4 +47,5 @@ export async function preloadCommands(
 	}
 	await Promise.all(Array.from({ length: Math.min(6, index.length) }, worker));
 	signal?.throwIfAborted();
+	return index.filter((entry) => !notCommands.has(entry));
 }

@@ -35,10 +35,10 @@ it('limits concurrency to six, reports verified byte progress, and waits for eve
 	]);
 	expect(progress.at(-1)).toEqual({ completed: 9, total: 9, bytes: 90 });
 });
-it('reports each failed or absent executable once and completes the remaining downloads', async () => {
+it('silently excludes absent executables from commands and progress while reporting other failures', async () => {
 	const onFailure = vi.fn();
 	const onProgress = vi.fn();
-	await preloadCommands(
+	const commands = await preloadCommands(
 		index.slice(0, 3),
 		async (path) => {
 			if (path.includes('cmd0@')) throw new Error('offline');
@@ -46,16 +46,16 @@ it('reports each failed or absent executable once and completes the remaining do
 		},
 		{ onFailure, onProgress }
 	);
-	expect(onFailure).toHaveBeenCalledTimes(2);
+	expect(onFailure).toHaveBeenCalledTimes(1);
 	expect(onFailure.mock.calls.map(([entry]) => entry.name).sort()).toEqual([
-		'cli/cmd0',
-		'cli/cmd1'
+		'cli/cmd0'
 	]);
 	expect(onProgress).toHaveBeenLastCalledWith({
-		completed: 3,
-		total: 3,
+		completed: 2,
+		total: 2,
 		bytes: 12
 	});
+	expect(commands).toEqual([index[0], index[2]]);
 });
 it('aborts startup without reporting cancellation as individual download failures', async () => {
 	const controller = new AbortController();
@@ -74,4 +74,21 @@ it('aborts startup without reporting cancellation as individual download failure
 	).rejects.toThrow();
 	expect(onFailure).not.toHaveBeenCalled();
 	expect(onProgress).toHaveBeenCalledOnce();
+});
+
+it('finishes an index of libraries silently with zero commands', async () => {
+	const onFailure = vi.fn();
+	const onProgress = vi.fn();
+	expect(
+		await preloadCommands(index, async () => undefined, {
+			onFailure,
+			onProgress
+		})
+	).toEqual([]);
+	expect(onFailure).not.toHaveBeenCalled();
+	expect(onProgress).toHaveBeenLastCalledWith({
+		completed: 0,
+		total: 0,
+		bytes: 0
+	});
 });

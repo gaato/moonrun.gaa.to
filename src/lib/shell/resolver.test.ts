@@ -242,7 +242,7 @@ it('uses the page index, preloads CLI only, and keeps bytes ready even without C
 		cache: 'no-store'
 	});
 });
-it.each([404, 500])(
+it.each([500])(
 	'does not block preload on a %s failure and retries that indexed version on use',
 	async (status) => {
 		const r = registry();
@@ -272,3 +272,51 @@ it.each([404, 500])(
 		).toBe(false);
 	}
 );
+
+it('silently removes a library from preload commands and counts, remembering it until the next session', async () => {
+	const r = registry();
+	const index = [
+		{ name: 'cli/core', version: '1.0.0' },
+		{ name: 'cli/sh', version: '1.0.0' }
+	];
+	r.prebuild('/cli/sh@1.0.0/sh.wasm');
+	const resolve = createResolver(skills, { ...r.options, index });
+	const onFailure = vi.fn();
+	const onProgress = vi.fn();
+	expect(await resolve.preload({ onFailure, onProgress })).toEqual([index[1]]);
+	expect(onFailure).not.toHaveBeenCalled();
+	expect(onProgress).toHaveBeenLastCalledWith({
+		completed: 1,
+		total: 1,
+		bytes: bytes.byteLength
+	});
+	const calls = r.fetcher.mock.calls.length;
+	// Even if availability changes, no name or path retries a known library this session.
+	r.prebuild('/cli/core@1.0.0/core.wasm');
+	for (const name of [
+		'core',
+		'core',
+		'cli/core@latest/core.wasm',
+		'/cli/core@1.0.0/core.wasm'
+	])
+		expect(await resolve(name)).toBeUndefined();
+	expect(await resolve.preload({ onFailure })).toEqual([index[1]]);
+	expect(onFailure).not.toHaveBeenCalled();
+	expect(r.fetcher).toHaveBeenCalledTimes(calls);
+	expect(r.onResolved).not.toHaveBeenCalled();
+	expect(await createResolver(skills, { ...r.options, index })('core')).toEqual(
+		bytes
+	);
+});
+it('retains on-demand skill fallback for a CLI coordinate skipped during preload', async () => {
+	const r = registry();
+	const resolve = createResolver(skills, {
+		...r.options,
+		index: [{ name: 'cli/jq', version: '1.0.0' }]
+	});
+	expect(await resolve.preload()).toEqual([]);
+	const calls = r.fetcher.mock.calls.length;
+	expect(await resolve('jq')).toEqual(bytes);
+	expect(r.fetcher).toHaveBeenCalledTimes(calls + 2);
+	expect(r.onResolved).toHaveBeenCalledWith('jq', '/bobzhang/jq@0.2.0/jq.wasm');
+});

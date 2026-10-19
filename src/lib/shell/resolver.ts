@@ -64,15 +64,10 @@ export function createResolver(
 					signal
 				))();
 			programs.set(path, pending);
-			// A failed preload retries on use, at the same indexed version.
-			void pending.then(
-				(bytes) => {
-					if (!bytes) programs.delete(path);
-				},
-				() => {
-					programs.delete(path);
-				}
-			);
+			// Keep checksum 404s as not-a-command for the session. Other failures retry.
+			void pending.catch(() => {
+				programs.delete(path);
+			});
 		}
 		return pending;
 	}
