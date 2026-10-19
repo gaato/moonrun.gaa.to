@@ -1,0 +1,107 @@
+[
+	{
+		"module": "gaato/kbbi",
+		"author": "gaato",
+		"author_avatar": "https://avatars.githubusercontent.com/u/57865205?v=4",
+		"version": "0.1.6",
+		"yanked": false,
+		"yanked_reason": null,
+		"package": "cmd/kbbi",
+		"name": "gaato/kbbi/cmd/kbbi",
+		"detail_url": "/skills/gaato/kbbi@0.1.6/cmd/kbbi",
+		"wasm_url": "https://download.mooncakes.io/prebuild/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm",
+		"checksum_url": "https://download.mooncakes.io/prebuild/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm.sha256",
+		"archive_url": "https://download.mooncakes.io/skills/gaato/kbbi@0.1.6/cmd/kbbi/skills.zip",
+		"archive_digest": "sha256:9182fb2ae116904aa90387c5c9ae1a6fbf92f4ec79373c50508bc8692a840607",
+		"metadata": {
+			"name": "kbbi",
+			"description": "Look up Indonesian words in the official KBBI dictionary using the kbbi MoonBit CLI. It outputs JSON; translate or summarize the definitions for the user as needed."
+		},
+		"repository": "https://github.com/gaato/kbbi.mbt",
+		"created_at": "2026-10-19T02:37:37.386047"
+	},
+	{
+		"module": "moonbitlang/office",
+		"author": "moonbitlang",
+		"author_avatar": "",
+		"version": "0.3.0",
+		"yanked": false,
+		"yanked_reason": null,
+		"package": "",
+		"name": "moonbitlang/office",
+		"detail_url": "/skills/moonbitlang/office@0.3.0",
+		"wasm_url": "https://download.mooncakes.io/prebuild/moonbitlang/office@0.3.0/office.wasm",
+		"checksum_url": "https://download.mooncakes.io/prebuild/moonbitlang/office@0.3.0/office.wasm.sha256",
+		"archive_url": "https://download.mooncakes.io/skills/moonbitlang/office@0.3.0/skills.zip",
+		"archive_digest": "sha256:59cf038f8d54e6ad385472607c270fe0e5f1d522cca2edabbbf21c2d31f8722e",
+		"metadata": {
+			"name": "office-cli",
+			"description": "Inspect, create, edit, validate, and preview DOCX and XLSX files through the unified Office CLI, including comments, tracked changes, transactional edits, DOCX rendering to PDF or SVG, and PPTX identification, slide/notes text reads, and fresh one-slide creation. Use when working with this CLI or when a portable command-line workflow fits the document task. Does not edit existing PDFs or PowerPoint files."
+		},
+		"repository": "https://github.com/moonbitlang/office.mbt",
+		"created_at": "2026-10-13T11:40:51.105467"
+	},
+	{
+		"module": "bobzhang/jq",
+		"author": "bobzhang",
+		"author_avatar": "https://avatars.githubusercontent.com/u/747051?v=4",
+		"version": "0.2.0",
+		"yanked": false,
+		"yanked_reason": null,
+		"package": "",
+		"name": "bobzhang/jq",
+		"detail_url": "/skills/bobzhang/jq@0.2.0",
+		"wasm_url": "https://download.mooncakes.io/prebuild/bobzhang/jq@0.2.0/jq.wasm",
+		"checksum_url": "https://download.mooncakes.io/prebuild/bobzhang/jq@0.2.0/jq.wasm.sha256",
+		"archive_url": "https://download.mooncakes.io/skills/bobzhang/jq@0.2.0/skills.zip",
+		"archive_digest": "sha256:ce8225c5117bab764e802cd79aa5099bda18d4e6ad36e02df43a0c8ccc4063ed",
+		"metadata": {
+			"name": "jq",
+			"description": "Query, filter, transform, aggregate, and reshape JSON with the portable bobzhang/jq WebAssembly CLI. Use when Codex needs jq-compatible field extraction, array filtering or mapping, object construction, raw or compact output, JSONL/NDJSON processing, or JSON transformations from stdin or files without relying on a native jq installation."
+		},
+		"repository": "https://github.com/moonbit-community/moonbit-jq",
+		"created_at": "2026-09-28T04:54:21.299812"
+	},
+	{
+		"module": "Yoorkin/cowsay",
+		"author": "Yoorkin",
+		"author_avatar": "https://avatars.githubusercontent.com/u/29514144?v=4",
+		"version": "0.1.6",
+		"yanked": false,
+		"yanked_reason": null,
+		"package": "",
+		"name": "Yoorkin/cowsay",
+		"detail_url": "/skills/Yoorkin/cowsay@0.1.6",
+		"wasm_url": "https://download.mooncakes.io/prebuild/Yoorkin/cowsay@0.1.6/cowsay.wasm",
+		"checksum_url": "https://download.mooncakes.io/prebuild/Yoorkin/cowsay@0.1.6/cowsay.wasm.sha256",
+		"archive_url": "https://download.mooncakes.io/skills/Yoorkin/cowsay@0.1.6/skills.zip",
+		"archive_digest": "sha256:297ee7a33edbe914ac1b6ea49eb8e8b6ba608bf50f43b857d5a15e9d83f82d1b",
+		"metadata": {
+			"name": "Yoorkin/cowsay",
+			"description": "Build and run Yoorkin's portable MoonBit cowsay CLI for WASM."
+		},
+		"repository": "https://github.com/Yoorkin/cowsay",
+		"created_at": "2026-09-03T11:00:05.64932"
+	},
+	{
+		"module": "conglinyizhi/toml-cli",
+		"author": "conglinyizhi",
+		"author_avatar": "https://avatars.githubusercontent.com/u/42381347?v=4",
+		"version": "0.3.3",
+		"yanked": false,
+		"yanked_reason": null,
+		"package": "",
+		"name": "conglinyizhi/toml-cli",
+		"detail_url": "/skills/conglinyizhi/toml-cli@0.3.3",
+		"wasm_url": "https://download.mooncakes.io/prebuild/conglinyizhi/toml-cli@0.3.3/toml-cli.wasm",
+		"checksum_url": "https://download.mooncakes.io/prebuild/conglinyizhi/toml-cli@0.3.3/toml-cli.wasm.sha256",
+		"archive_url": "https://download.mooncakes.io/skills/conglinyizhi/toml-cli@0.3.3/skills.zip",
+		"archive_digest": "sha256:d1269e926f4873f1ad989e25123d635bf01cd9d887035ccd6ce82d80b7ac3c42",
+		"metadata": {
+			"name": "conglinyizhi/toml-cli",
+			"description": "Parse, query, validate, and format TOML from stdin or files. jq-style dotted-path queries (get), TOML↔JSON conversion, and formatting."
+		},
+		"repository": "https://github.com/conglinyizhi/toml-mbt",
+		"created_at": "2026-08-21T12:18:53.107823"
+	}
+]

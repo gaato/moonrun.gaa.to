@@ -12,7 +12,7 @@
 		type ModulePath
 	} from './paths';
 	import { pinVersion } from './modules';
-	import { browserCache, verifiedBytes } from './integrity';
+	import { browserCache, verifiedWasm } from './integrity';
 	import { fetchSkills, skillPath, loadSkill, type Skill } from './skills';
 	import {
 		exitStatus,
@@ -89,25 +89,21 @@
 			const pinned = await pinVersion(parsed, controller.signal);
 			if (!alive) return;
 			path = pinned;
-			const current = new URL(location.href);
-			current.pathname = modulePath(pinned);
-			replaceState(current, {});
+			if (parsed.version === 'latest') {
+				const current = new URL(location.href);
+				current.pathname = modulePath(pinned);
+				replaceState(current, {});
+			}
 			const url = wasmUrl(pinned);
 			void findDocumentation(modulePath(pinned));
-			const response = await fetch(`${url}.sha256`, {
-				signal: controller.signal,
-				cache: 'no-store'
-			});
-			if (!response.ok)
-				throw new Error(`Could not fetch checksum (${response.status}).`);
-			const digest = await response.text();
-			wasm = await verifiedBytes(
+			wasm = await verifiedWasm(
 				url,
-				digest,
 				await browserCache(),
 				fetch,
 				controller.signal
 			);
+			if (!wasm)
+				throw new Error('No prebuilt executable (checksum not found).');
 			if (alive) {
 				ready = true;
 				status = 'SHA-256 verified · ready';

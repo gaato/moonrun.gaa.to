@@ -1,0 +1,66 @@
+import { afterEach, expect, it, vi } from 'vitest';
+import { startSession } from './session';
+import type { ShellReply, ShellRequest } from './protocol';
+class FakeWorker {
+	static current: FakeWorker;
+	sent: ShellRequest[] = [];
+	terminated = false;
+	onmessage?: (event: { data: ShellReply }) => void;
+	onerror?: (event: { message: string }) => void;
+	constructor() {
+		FakeWorker.current = this;
+	}
+	postMessage(request: ShellRequest) {
+		this.sent.push(request);
+	}
+	terminate() {
+		this.terminated = true;
+	}
+	emit(data: ShellReply) {
+		this.onmessage?.({ data });
+	}
+}
+afterEach(() => vi.unstubAllGlobals());
+it('bridges byte input/output, command resolution, signal and EOF to runInWorker supervisor', async () => {
+	vi.stubGlobal('Worker', FakeWorker);
+	const resolver = vi.fn(async (_name: string) => new Uint8Array([2]));
+	const output = vi.fn();
+	const session = startSession(new Uint8Array([1]), resolver, output);
+	const worker = FakeWorker.current;
+	expect(worker.sent[0]).toEqual({ type: 'start', wasm: new Uint8Array([1]) });
+	const writing = session.write(new Uint8Array([3]));
+	worker.emit({ type: 'written', id: 1 });
+	await writing;
+	worker.emit({ type: 'output', bytes: new Uint8Array([4]) });
+	expect(output).toHaveBeenCalledWith(new Uint8Array([4]));
+	worker.emit({ type: 'resolve', id: 2, name: 'cat' });
+	await Promise.resolve();
+	expect(worker.sent).toContainEqual({
+		type: 'resolved',
+		id: 2,
+		wasm: new Uint8Array([2])
+	});
+	session.signal(2);
+	session.end();
+	expect(worker.sent).toContainEqual({ type: 'signal', number: 2 });
+	expect(worker.sent).toContainEqual({ type: 'end' });
+	worker.emit({ type: 'outcome', outcome: { kind: 'completed' } });
+	expect(await session.finished).toEqual({ kind: 'completed' });
+	expect(worker.terminated).toBe(true);
+});
+it('stops the supervisor and rejects pending writes when navigation ends the session', async () => {
+	vi.stubGlobal('Worker', FakeWorker);
+	const session = startSession(
+		new Uint8Array(),
+		async () => undefined,
+		() => {}
+	);
+	const writing = session.write(new Uint8Array([1]));
+	const rejected = expect(writing).rejects.toThrow('ended');
+	session.stop();
+	expect(FakeWorker.current.sent.at(-1)).toEqual({ type: 'stop' });
+	FakeWorker.current.emit({ type: 'stopped' });
+	expect(await session.finished).toBeUndefined();
+	await rejected;
+	expect(FakeWorker.current.terminated).toBe(true);
+});

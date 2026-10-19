@@ -29,7 +29,9 @@ function setup(
 			tasks.push(promise);
 		}
 	};
-	const assets = { fetch: vi.fn(async () => new Response('SPA')) };
+	const assets = {
+		fetch: vi.fn(async (_request: Request) => new Response('SPA'))
+	};
 	return {
 		cache,
 		tasks,
@@ -314,7 +316,9 @@ it('serves downloads when cache reads or writes fail', async () => {
 		}
 	};
 	const tasks: Promise<unknown>[] = [];
-	const assets = { fetch: vi.fn(async () => new Response('SPA')) };
+	const assets = {
+		fetch: vi.fn(async (_request: Request) => new Response('SPA'))
+	};
 	const response = await handleRequest(
 		new Request(origin + wasm),
 		{ ASSETS: assets },
@@ -328,4 +332,133 @@ it('serves downloads when cache reads or writes fail', async () => {
 	expect(await response.text()).toBe('data');
 	await Promise.all(tasks);
 	expect(fetcher).toHaveBeenCalledOnce();
+});
+
+it.each([
+	'/cli/sh@0.2.1/sh.wasm',
+	'/cli/sh@latest/sh.wasm',
+	'/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm',
+	'/cli/sh%400.2.1/sh.wasm'
+])('serves %s through index.html without canonical redirects', async (path) => {
+	const s = setup();
+	expect((await s.run(path)).status).toBe(200);
+	const request = s.assets.fetch.mock.calls[0][0] as Request;
+	expect(new URL(request.url).pathname).toBe('/index.html');
+	expect(s.fetcher).not.toHaveBeenCalled();
+});
+it('permits xterm generated styles only on the shell document', async () => {
+	const strict =
+		"script-src 'self'; style-src 'self'; style-src-attr 'none'; connect-src 'self' https://mooncakes.io";
+	const assets = {
+		fetch: vi.fn(
+			async (_request: Request) =>
+				new Response('SPA', { headers: { 'Content-Security-Policy': strict } })
+		)
+	};
+	const s = setup();
+	const response = await handleRequest(
+		new Request(origin + '/shell'),
+		{ ASSETS: assets },
+		{ waitUntil() {} },
+		{ cache: s.cache, fetcher: s.fetcher }
+	);
+	expect(response.headers.get('Content-Security-Policy')).toBe(
+		strict
+			.replace("style-src 'self'", "style-src 'self' 'unsafe-inline'")
+			.replace("style-src-attr 'none'", "style-src-attr 'unsafe-inline'")
+	);
+});
+
+describe('CLI version index', () => {
+	const path = '/_mooncakes/cli-index';
+	it('filters the upstream list, strips headers and caches successful JSON for 10 minutes', async () => {
+		const s = setup(
+			vi.fn<typeof fetch>(async () =>
+				Response.json(
+					[
+						{ name: 'cli/sh', version: '1.2.3', description: 'ignored' },
+						{ name: 'cli/core', version: '0.2.1' },
+						{ name: 'someone/skill', version: '1.0.0' },
+						{ name: 'cli/yanked', version: '1.0.0', yanked: true },
+						{ name: 'cli/mutable', version: 'latest' }
+					],
+					{ headers: { 'Set-Cookie': 'private=x' } }
+				)
+			)
+		);
+		const response = await s.run(path, {
+			headers: { Cookie: 'secret=x', Authorization: 'Bearer secret' }
+		});
+		expect(response.status).toBe(200);
+		expect(response.headers.get('Cache-Control')).toBe('public, max-age=600');
+		expect(response.headers.get('Content-Type')).toBe('application/json');
+		expect(response.headers.get('Set-Cookie')).toBeNull();
+		const expected = [
+			{ name: 'cli/core', version: '0.2.1' },
+			{ name: 'cli/sh', version: '1.2.3' }
+		];
+		expect(await response.json()).toEqual(expected);
+		await Promise.all(s.tasks);
+		const upstream = s.fetcher.mock.calls[0][0] as Request;
+		expect(upstream.url).toBe('https://mooncakes.io/api-new/v0/modules');
+		expect(upstream.credentials).toBe('omit');
+		expect([...upstream.headers]).toEqual([
+			['accept-encoding', 'identity'],
+			['user-agent', 'mooncakes-playground/0.1']
+		]);
+		expect(s.cache.keys[0].url).toBe(origin + path);
+		expect([...s.cache.keys[0].headers]).toEqual([]);
+		expect(await (await s.run(path)).json()).toEqual(expected);
+		const head = await s.run(path, { method: 'HEAD' });
+		expect(head.status).toBe(200);
+		expect(head.body).toBeNull();
+		expect(s.fetcher).toHaveBeenCalledOnce();
+		expect(s.assets.fetch).not.toHaveBeenCalled();
+	});
+	it('refetches after the edge cache expires', async () => {
+		const s = setup(
+			vi.fn<typeof fetch>(async () =>
+				Response.json([{ name: 'cli/sh', version: '1.0.0' }])
+			)
+		);
+		await (await s.run(path)).json();
+		await Promise.all(s.tasks);
+		// The Cache API enforces Cache-Control's TTL; simulate its expired miss.
+		s.cache.entries.clear();
+		await (await s.run(path)).json();
+		expect(s.fetcher).toHaveBeenCalledTimes(2);
+		await Promise.all(s.tasks);
+	});
+	it.each(['POST', 'PUT', 'OPTIONS'])(
+		'rejects %s without upstream or cache access',
+		async (method) => {
+			const s = setup();
+			expect((await s.run(path, { method })).status).toBe(404);
+			expect(s.fetcher).not.toHaveBeenCalled();
+			expect(s.cache.keys).toHaveLength(0);
+		}
+	);
+	it('rejects query parameters', async () => {
+		const s = setup();
+		expect((await s.run(path + '?url=https://evil.example')).status).toBe(404);
+		expect(s.fetcher).not.toHaveBeenCalled();
+	});
+	it.each(['upstream error', 'invalid JSON', 'invalid list', 'network error'])(
+		'does not cache %s',
+		async (failure) => {
+			const s = setup(
+				vi.fn<typeof fetch>(async () => {
+					if (failure === 'network error') throw new Error('offline');
+					if (failure === 'upstream error')
+						return new Response('', { status: 500 });
+					return failure === 'invalid JSON'
+						? new Response('bad')
+						: Response.json({});
+				})
+			);
+			expect((await s.run(path)).status).toBe(502);
+			expect(s.cache.entries.size).toBe(0);
+			expect(s.tasks).toHaveLength(0);
+		}
+	);
 });

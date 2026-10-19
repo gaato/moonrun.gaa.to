@@ -10,6 +10,7 @@ and rights. This project's license does not grant rights to that content.
 
 Bundled third-party software includes:
 - Svelte, SvelteKit, Tailwind CSS, daisyUI, clsx, devalue, esm-env: MIT
+- xterm.js (@xterm/xterm) and @xterm/addon-fit: MIT
 - fflate: MIT
 - marked: MIT
 - DOMPurify: Apache-2.0 OR MPL-2.0 (used under Apache-2.0)

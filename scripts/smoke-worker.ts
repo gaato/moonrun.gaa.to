@@ -102,7 +102,7 @@ process.once('SIGTERM', () => {
 	void stop().finally(() => process.exit(143));
 });
 
-async function curl(name: string, path: string, timeout = 45, follow = false) {
+async function curl(name: string, path: string, timeout = 45) {
 	const bodyPath = join(directory, name + '.body');
 	const { stdout } = await exec(
 		'curl',
@@ -112,7 +112,6 @@ async function curl(name: string, path: string, timeout = 45, follow = false) {
 			'--noproxy',
 			'*',
 			'--path-as-is',
-			...(follow ? ['--location', '--max-redirs', '3'] : []),
 			'--max-time',
 			String(timeout),
 			'--dump-header',
@@ -151,11 +150,66 @@ try {
 	}
 	assert.ok(ready, 'Wrangler did not become ready within 30 seconds.');
 	const program = '/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm';
-	const spa = await curl('spa', program, 45, true);
-	assert.equal(spa.status, 200, 'Module path must serve the SPA fallback.');
-	assert.match(spa.contentType, /^text\/html\b/);
-	assert.deepEqual(spa.body, await readFile(join(root, 'build/index.html')));
-	console.log('PASS module path: 200 SPA fallback');
+	for (const path of [
+		'/cli/sh@0.2.1/sh.wasm',
+		'/cli/sh@latest/sh.wasm',
+		program
+	]) {
+		const name =
+			path === program
+				? 'spa-nested'
+				: path.includes('@latest')
+					? 'spa-latest'
+					: 'spa-module';
+		const spa = await curl(name, path);
+		assert.equal(
+			spa.status,
+			200,
+			'Module paths must serve the SPA without redirecting.'
+		);
+		assert.match(spa.contentType, /^text\/html\b/);
+		const headers = await readFile(join(directory, name + '.headers'), 'utf8');
+		assert.doesNotMatch(headers, /^location:/im);
+		assert.deepEqual(spa.body, await readFile(join(root, 'build/index.html')));
+		console.log(`PASS ${path}: 200 SPA, no Location header`);
+	}
+
+	const shell = await curl('shell', '/shell');
+	assert.equal(shell.status, 200);
+	const shellHeaders = await readFile(join(directory, 'shell.headers'), 'utf8');
+	assert.match(shellHeaders, /style-src 'self' 'unsafe-inline';/);
+	assert.match(shellHeaders, /connect-src 'self' https:\/\/mooncakes.io;/);
+	assert.doesNotMatch(shellHeaders, /script-src[^;]*'unsafe-inline'/);
+	console.log(
+		'PASS /shell: 200, xterm styles permitted, script/connect CSP retained'
+	);
+
+	const index = await curl('cli-index', '/_mooncakes/cli-index');
+	assert.equal(index.status, 200, 'CLI index failed.');
+	assert.match(index.contentType, /^application\/json\b/);
+	const entries = JSON.parse(index.body.toString()) as {
+		name: string;
+		version: string;
+	}[];
+	assert.ok(Array.isArray(entries) && entries.length > 0);
+	assert.ok(entries.some((entry) => entry.name === 'cli/sh'));
+	for (const entry of entries) {
+		assert.deepEqual(Object.keys(entry).sort(), ['name', 'version']);
+		assert.match(entry.name, /^cli\/[A-Za-z0-9_-][A-Za-z0-9_.-]*$/);
+		assert.match(entry.version, /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?$/);
+	}
+	const indexHeaders = await readFile(
+		join(directory, 'cli-index.headers'),
+		'utf8'
+	);
+	assert.match(indexHeaders, /cache-control: public, max-age=600/im);
+	assert.deepEqual(
+		(await curl('cli-index-cached', '/_mooncakes/cli-index')).body,
+		index.body
+	);
+	console.log(
+		`PASS CLI index: 200 JSON, ${entries.length} versioned modules, 10-minute cache`
+	);
 
 	const mirror = '/_mooncakes/prebuild' + program;
 	const wasm = await curl('wasm', mirror);

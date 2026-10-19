@@ -3,6 +3,7 @@ import {
 	cacheKey,
 	digestHex,
 	verifiedBytes,
+	verifiedWasm,
 	verifySha256,
 	type VerifiedCache
 } from './integrity';
@@ -99,4 +100,78 @@ it('keys relative mirror paths by their actual same-origin URL and digest', asyn
 	} finally {
 		vi.unstubAllGlobals();
 	}
+});
+
+describe('immutable wasm cache', () => {
+	const url =
+		'https://playground.test/_mooncakes/prebuild/cli/sh@1.0.0/sh.wasm';
+	function downloader() {
+		return vi.fn<typeof fetch>(async (input) =>
+			String(input).endsWith('.sha256')
+				? new Response(digest)
+				: new Response(bytes)
+		);
+	}
+	it('stores the digest with URL-keyed bytes and hits without fetching checksum or wasm', async () => {
+		const cache = new FakeCache();
+		const fetcher = downloader();
+		expect(await verifiedWasm(url, cache, fetcher)).toEqual(bytes);
+		expect(cache.entries.size).toBe(1);
+		expect(cache.entries.get(url)?.headers.get('X-Mooncakes-SHA256')).toBe(
+			digest
+		);
+		expect(await verifiedWasm(url, cache, fetcher)).toEqual(bytes);
+		expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+			url + '.sha256',
+			url
+		]);
+	});
+	it.each(['corrupt bytes', 'missing digest'])(
+		'evicts %s and verifies a fresh download',
+		async (fault) => {
+			const cache = new FakeCache();
+			await cache.put(
+				url,
+				fault === 'corrupt bytes'
+					? new Response('bad', { headers: { 'X-Mooncakes-SHA256': digest } })
+					: new Response(bytes)
+			);
+			const fetcher = downloader();
+			expect(await verifiedWasm(url, cache, fetcher)).toEqual(bytes);
+			expect(fetcher).toHaveBeenCalledTimes(2);
+		}
+	);
+	it('does not store mismatches, missing executables or failed checksum downloads', async () => {
+		const cache = new FakeCache();
+		await expect(
+			verifiedWasm(url, cache, async (input) =>
+				String(input).endsWith('.sha256')
+					? new Response(digest)
+					: new Response('bad')
+			)
+		).rejects.toThrow('mismatch');
+		expect(
+			await verifiedWasm(
+				url,
+				cache,
+				async () => new Response('', { status: 404 })
+			)
+		).toBeUndefined();
+		await expect(
+			verifiedWasm(url, cache, async () => new Response('', { status: 500 }))
+		).rejects.toThrow('500');
+		expect(cache.entries.size).toBe(0);
+	});
+	it('rejects mutable versions and archives before touching cache or network', async () => {
+		const fetcher = downloader();
+		for (const input of [
+			url.replace('@1.0.0', '@latest'),
+			url.replace('sh.wasm', 'skills.zip'),
+			url + '?v=1'
+		])
+			await expect(verifiedWasm(input, undefined, fetcher)).rejects.toThrow(
+				'immutable'
+			);
+		expect(fetcher).not.toHaveBeenCalled();
+	});
 });

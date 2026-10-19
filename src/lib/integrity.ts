@@ -1,3 +1,5 @@
+import { downloadPath, mirrorPrefix } from './downloads';
+
 export function digestHex(text: string): string {
 	// Registry archive digests use sha256:hex; checksum files may use sha256sum format.
 	const match = /^(?:sha256:)?([a-f0-9]{64})(?:\s+\*?[^\r\n]+)?$/i.exec(
@@ -79,4 +81,62 @@ export async function browserCache(): Promise<Cache | undefined> {
 	} catch {
 		return undefined;
 	}
+}
+
+// Immutable prebuilds use their exact URL as identity, with the verified digest
+// stored alongside the bytes. Archives retain URL+digest identity above.
+export async function verifiedWasm(
+	url: string,
+	cache?: VerifiedCache,
+	fetcher: typeof fetch = fetch,
+	signal?: AbortSignal
+): Promise<Uint8Array | undefined> {
+	const key = new URL(url, globalThis.location?.href);
+	if (
+		key.search ||
+		key.hash ||
+		!key.pathname.startsWith(mirrorPrefix + '/') ||
+		!key.pathname.endsWith('.wasm') ||
+		!downloadPath(key.pathname.slice(mirrorPrefix.length))
+	)
+		throw new Error('Expected an immutable versioned wasm URL.');
+	let cached: Response | undefined;
+	try {
+		cached = await cache?.match(key.href);
+	} catch {
+		/* Use the network. */
+	}
+	if (cached) {
+		try {
+			const bytes = new Uint8Array(await cached.arrayBuffer());
+			await verifySha256(bytes, cached.headers.get('X-Mooncakes-SHA256') ?? '');
+			return bytes;
+		} catch {
+			try {
+				await cache?.delete(key.href);
+			} catch {
+				/* Use the network. */
+			}
+		}
+	}
+	const checksum = await fetcher(url + '.sha256', {
+		signal,
+		cache: 'no-store'
+	});
+	if (checksum.status === 404) return undefined;
+	if (!checksum.ok)
+		throw new Error(`Could not fetch checksum (${checksum.status}).`);
+	const digest = digestHex(await checksum.text());
+	const bytes = await verifiedBytes(url, digest, undefined, fetcher, signal);
+	try {
+		await cache?.put(
+			key.href,
+			new Response(new Uint8Array(bytes), {
+				headers: { 'X-Mooncakes-SHA256': digest }
+			})
+		);
+	} catch {
+		/* Verified bytes still work if caching fails. */
+	}
+	return bytes;
 }

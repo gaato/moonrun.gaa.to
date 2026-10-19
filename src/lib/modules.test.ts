@@ -17,7 +17,7 @@ it('pins latest and missing versions using latest_version without changing the e
 	}
 	expect(fetcher).toHaveBeenCalledWith(
 		'https://mooncakes.io/api-new/v0/modules/gaato/kbbi',
-		{ signal: undefined }
+		{ signal: undefined, cache: 'no-store' }
 	);
 	const pinned = parseModulePath('/cli/sh@0.2.1/sh.wasm')!;
 	expect(await pinVersion(pinned)).toBe(pinned);

@@ -5,6 +5,7 @@
 
 <div class="mx-auto flex min-h-screen max-w-6xl flex-col px-5 sm:px-8">
 	<header
+		data-sveltekit-reload
 		class="border-base-300 mb-8 flex flex-wrap items-center justify-between gap-4 border-b py-5"
 	>
 		<a class="text-lg font-bold tracking-tight" href="/">mooncakes-playground</a

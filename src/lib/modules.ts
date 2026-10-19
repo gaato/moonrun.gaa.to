@@ -1,14 +1,22 @@
 import { type ModulePath, parseModulePath } from './paths';
 
+export class ModuleNotFoundError extends Error {
+	constructor() {
+		super('Module not found (404).');
+	}
+}
+
 export async function pinVersion(
 	path: ModulePath,
-	signal?: AbortSignal
+	signal?: AbortSignal,
+	fetcher: typeof fetch = fetch
 ): Promise<ModulePath> {
 	if (path.version !== 'latest') return path;
-	const response = await fetch(
+	const response = await fetcher(
 		`https://mooncakes.io/api-new/v0/modules/${encodeURIComponent(path.owner)}/${encodeURIComponent(path.module)}`,
-		{ signal }
+		{ signal, cache: 'no-store' }
 	);
+	if (response.status === 404) throw new ModuleNotFoundError();
 	if (!response.ok)
 		throw new Error(`Could not resolve latest version (${response.status}).`);
 	const detail = (await response.json()) as { latest_version?: unknown };

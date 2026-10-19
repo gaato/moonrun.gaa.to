@@ -69,9 +69,6 @@ const headers = await readFile(resolve(root, '_headers'), 'utf8');
 assert.match(headers, /wasm-unsafe-eval/);
 assert.match(headers, /worker-src 'self'/);
 assert.match(headers, /connect-src 'self' https:\/\/mooncakes\.io;/);
-console.log(
-	`Verified ${visited.size} runtime assets, supervisor import, SPA entry and security headers.`
-);
 
 for (const source of [
 	await readFile(resolve(root, 'index.html'), 'utf8'),
@@ -92,5 +89,19 @@ assert.equal(config.assets.binding, 'ASSETS');
 assert.equal(config.assets.not_found_handling, 'single-page-application');
 assert.deepEqual(config.assets.run_worker_first, [
 	'/_mooncakes/prebuild/*',
-	'/_mooncakes/skills/*'
+	'/_mooncakes/cli-index',
+	'/_mooncakes/skills/*',
+	'/*@*',
+	'/*%40*',
+	'/shell'
 ]);
+
+const shellWorker = assets.find(
+	(name) => name.startsWith('shell.worker-') && name.endsWith('.js')
+);
+assert.ok(shellWorker, 'Missing shell supervisor Worker');
+await visit(resolve(root, '_app/immutable/workers', shellWorker));
+
+console.log(
+	`Verified ${visited.size} runtime assets, both supervisor imports, SPA entry and security headers.`
+);

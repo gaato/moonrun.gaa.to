@@ -6,3 +6,4 @@ static/_moonrun/
 .env
 .env.*
 !.env.example
+.cache/
