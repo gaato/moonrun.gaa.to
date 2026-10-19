@@ -1,6 +1,5 @@
-import type { BrowserRunHandle } from 'moonrun-js/browser';
 export function interruptCommand(
-	handle: Pick<BrowserRunHandle, 'signal'>,
+	handle: { signal(number: number): void },
 	commandRunning: boolean
 ): void {
 	// Replace this call with the child-only signal API once moonrun-js ships it.

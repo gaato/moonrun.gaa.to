@@ -229,6 +229,20 @@ try {
 	);
 	console.log(`PASS mirror: 200 application/wasm, SHA-256 ${digest}`);
 
+	const source = await curl(
+		'source-zip',
+		'/_mooncakes/user/gaato/kbbi/0.1.6.zip'
+	);
+	assert.equal(source.status, 200, 'Source zip mirror failed.');
+	assert.equal(source.contentType, 'application/zip');
+	assert.deepEqual(source.body.subarray(0, 4), Buffer.from([0x50, 0x4b, 3, 4]));
+	assert.equal(
+		(await curl('source-latest', '/_mooncakes/user/gaato/kbbi/latest.zip'))
+			.status,
+		404
+	);
+	console.log('PASS source zip: 200 application/zip; latest rejected');
+
 	assert.equal(
 		(await curl('latest', mirror.replace('@0.1.6', '@latest'))).status,
 		404,

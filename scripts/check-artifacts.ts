@@ -91,6 +91,7 @@ assert.deepEqual(config.assets.run_worker_first, [
 	'/_mooncakes/prebuild/*',
 	'/_mooncakes/cli-index',
 	'/_mooncakes/skills/*',
+	'/_mooncakes/user/*',
 	'/*@*',
 	'/*%40*',
 	'/shell'

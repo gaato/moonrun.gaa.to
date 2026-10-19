@@ -4,7 +4,8 @@ it('maps public program, checksum and archive URLs to the same-origin mirror', (
 	for (const path of [
 		'/prebuild/cli/sh@0.2.1/sh.wasm',
 		'/prebuild/cli/sh@0.2.1/sh.wasm.sha256',
-		'/skills/cli/sh@0.2.1/skills.zip'
+		'/skills/cli/sh@0.2.1/skills.zip',
+		'/user/gaato/kbbi/0.1.6.zip'
 	]) {
 		expect(mirroredDownload('https://download.mooncakes.io' + path)).toBe(
 			'/_mooncakes' + path
@@ -24,3 +25,14 @@ it.each([
 ])('rejects unsafe registry URL %s', (url) => {
 	expect(() => mirroredDownload(url)).toThrow();
 });
+
+it.each([
+	'/user/gaato/kbbi/latest.zip',
+	'/user/gaato/kbbi/0.1.zip',
+	'/user/gaato/kbbi/0.1.6.tar',
+	'/user/gaato/kbbi/0.1.6.zip/extra',
+	'/user/gaato/kbbi%2fevil/0.1.6.zip',
+	'/user/gaato/kbbi/../0.1.6.zip'
+])('rejects invalid source zip path %s', (path) =>
+	expect(downloadPath(path)).toBeNull()
+);

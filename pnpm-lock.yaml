@@ -125,8 +125,8 @@ importers:
         specifier: ^18.1.1
         version: 18.1.1
       moonrun-js:
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: link:../moonrun-js
+        version: link:../moonrun-js
     devDependencies:
       '@sveltejs/adapter-static':
         specifier: ^3.0.10
@@ -625,10 +625,6 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
-
-  '@noble/ciphers@2.4.0':
-    resolution: {integrity: sha512-AnjFn0Jv92laAkvMrghlFZq4qQCIN/4DxFV/eooqtC2YTjB7kBeLMS2T9KJX4Dn+ZVXLOwK0lSgqDtx9gvxtiw==}
-    engines: {node: '>= 20.19.0'}
 
   '@oxc-project/types@0.154.0':
     resolution: {integrity: sha512-KYOUGQFlLWR+s4QMV2Q9ko38TZm7EdO87Qm7rvZLqk/webse/cDjtyxKhg/47l0byCbs/k46LT8qc4PKjAikzA==}
@@ -1268,11 +1264,6 @@ packages:
   miniflare@5.20261012.1-beta:
     resolution: {integrity: sha512-8Canhy6g9+vAhqMc0o80YphqYIwpiA3aAp8aX+uDXU7J/qbUeoZzcII9c2V1P4uT/eHD4SB93qet1o1bRY3BuQ==}
     engines: {node: '>=22.0.0'}
-
-  moonrun-js@0.1.0:
-    resolution: {integrity: sha512-9ffNnYC+BIyZeWK/8mD9EPVEpfpD0VZlehNxv/+HfdCEoMCRiWZXbfzJISRgI+gCuW26ecPkyUyub+SDIK3wog==}
-    engines: {node: '>=24'}
-    hasBin: true
 
   mri@1.2.0:
     resolution: {integrity: sha512-tzzskb3bG8LvYGFF/mDTpq3jpI6Q9wc3LEmBaghu+DdCssd1FakN7Bc0hVNmEyGq1bq3RgfkCb3cmQLpNPOroA==}
@@ -1959,8 +1950,6 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@noble/ciphers@2.4.0': {}
-
   '@oxc-project/types@0.154.0': {}
 
   '@polka/url@1.0.0-next.29': {}
@@ -2484,10 +2473,6 @@ snapshots:
       - '@types/node'
       - bufferutil
       - utf-8-validate
-
-  moonrun-js@0.1.0:
-    dependencies:
-      '@noble/ciphers': 2.4.0
 
   mri@1.2.0: {}
 

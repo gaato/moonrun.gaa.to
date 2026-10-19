@@ -6,7 +6,7 @@ Browse skills or open `/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm`. Root packages work
 
 ## Local development
 
-Requires Node 24 and pnpm 12.3.4. moonrun-js is installed from npm; no sibling checkout or dependency build is needed.
+Requires Node 24 and pnpm 12.3.4. moonrun-js is temporarily linked with `link:../moonrun-js` for its unreleased browser mounts. A coordinator-built sibling checkout with an existing `dist/browser/` is required; this project copies those assets and never builds the dependency. Switch the dependency back to `^0.1.1` after release. CI also needs that prebuilt sibling until then.
 
 ```fish
 mise install
@@ -25,9 +25,9 @@ mise exec -- pnpm exec wrangler deploy --dry-run
 
 ## Downloads and execution
 
-The download host sends CORS headers on its 302 response, but the final CloudFront/S3 response does not. The site's Cloudflare Worker therefore mirrors public files under `/_mooncakes/prebuild/…` and `/_mooncakes/skills/…`, fetching from the fixed `https://download.mooncakes.io` origin server-side and following its redirect.
+The download host sends CORS headers on its 302 response, but the final CloudFront/S3 response does not. The site's Cloudflare Worker therefore mirrors public files under `/_mooncakes/prebuild/…`, `/_mooncakes/skills/…` and `/_mooncakes/user/<owner>/<module>/<version>.zip`, fetching from the fixed `https://download.mooncakes.io` origin server-side and following its redirect.
 
-The mirror accepts only GET/HEAD for concrete SemVer coordinates and the matching `.wasm`, `.wasm.sha256` or `skills.zip` files. It rejects queries, traversal, consecutive dots and encoded slashes/backslashes. Client headers and cookies are never forwarded; upstream requests use a fixed User-Agent because CloudFront rejects an empty one. Upstream cookies and other headers are discarded. Successful downloads are cached at the edge for one year as immutable content; errors are not cached. The 64 MiB limit checks both Content-Length and actual streamed bytes. An oversized stream without a trustworthy length is aborted, and its partial body is not cached. HEAD misses use an upstream GET because the public host does not support HEAD.
+The mirror accepts only GET/HEAD for concrete SemVer coordinates and the matching `.wasm`, `.wasm.sha256`, `skills.zip` or versioned module source ZIP files. It rejects queries, traversal, consecutive dots and encoded slashes/backslashes. Client headers and cookies are never forwarded; upstream requests use a fixed User-Agent because CloudFront rejects an empty one. Upstream cookies and other headers are discarded. Successful downloads are cached at the edge for one year as immutable content; errors are not cached. The 64 MiB limit checks both Content-Length and actual streamed bytes. An oversized stream without a trustworthy length is aborted, and its partial body is not cached. HEAD misses use an upstream GET because the public host does not support HEAD.
 
 The browser still verifies wasm against its sibling `.sha256` and skill archives against `archive_digest` before use. Exact-version wasm is cached by URL with its verified digest stored alongside the bytes. Cache hits recheck the bytes against that digest without fetching `.sha256` again; missing or corrupt entries fetch and verify both files. Skill archives remain keyed by URL and `archive_digest`. Cache storage is optional. `SKILL.md` extraction permits one document up to 1 MiB; raw HTML/images are omitted and Markdown is sanitized. Checksums establish consistency with registry files, not independent publisher authentication.
 
@@ -47,7 +47,15 @@ Bare names use the indexed CLI version first, then try published skills. Names a
 
 Skill command names come from the prebuild wasm filename stem, with a plain `metadata.name` accepted as an alias (names containing `/` are not aliases). After CLI, matching skills are tried in lexicographic canonical full-path order (case-sensitive code-unit order, independent of API order). Unknown commands return command-not-found (127). Full `owner/module@version/path/name.wasm` coordinates work with explicit versions, `@latest`, or an omitted version; latest uses the page index for indexed CLI modules and the single-module API for other modules. Available commands lists the indexed commands after preloading (excluding checksum 404s), preload failures, every skill's full path, and a log of resolved coordinates. Guest networking remains unavailable.
 
-Node integration tests use fixed sh/echo/tr/false/cat fixtures, independent of current registry versions. They download missing fixtures into ignored `.cache/shell-fixtures/`, verify SHA-256 on every use, and execute the published browser host with the site's resolver and fake latest-version responses. Only first-run fixture downloads require network access.
+The shell also mounts a read-only `/mooncakes` beside `/work`. Owners come from the non-yanked modules list; each owner lists its latest pinned modules and real `@latest` symlinks. Older non-yanked versions work by explicit path, checked against the module detail API. Module names are `owner/name`; nested paths belong to packages.
+
+A module-directory stat, `cd`, or statting an owner’s entries does not fetch source. cli/ls 0.2.1 has no `-l` option; `ls -F /mooncakes/gaato` displays directory/symlink types without fetching ZIPs. Looking inside a module, opening a file, or statting below it fetches and extracts its source ZIP once per session, including memoized failures. At most four archive jobs run concurrently, and extraction is capped at 64 MiB and 20,000 entries with traversal rejected. Source ZIPs have no supplied checksum; they are read from the fixed HTTPS mirror. Sources and manifests remain third-party content.
+
+Executable declarations in `moon.pkg` (`pkgtype` or `options("is-main": true)`) and legacy `moon.pkg.json` (`"is-main": true`) synthesize `<package-stem>.wasm` only when the matching prebuild checksum exists. Root packages use the module name as stem. Opening a synthesized wasm, or statting it to obtain its size, loads the verified prebuild; other source-file reads stay in the extracted ZIP. Absolute and relative mounted wasm paths execute using the child command's cwd, for example `/mooncakes/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm rumah`. Unverified wasm files included in source archives are not executable through the resolver. Mount writes return EROFS.
+
+Every restart seeds `/work/README.txt` and `/work/sample.json`, sets `HOME=/work`, and prints a short command hint. Source-provider fetches and caches stay on the page thread through a small supervisor bridge; no network relay is exposed to guests. Providers and `/work` are fresh for each session.
+
+Node integration tests use fixed sh/echo/tr/false/cat/ls fixtures, independent of current registry versions. They download missing fixtures into ignored `.cache/shell-fixtures/`, verify SHA-256 on every use, and execute the published browser host with the site's resolver and fake latest-version responses. Fake source ZIPs exercise real cli/ls and cli/cat, `@latest` symlinks, mounted executable paths and EROFS through the provider bridge. Only first-run wasm fixture downloads require network access.
 
 ## Structure and build
 

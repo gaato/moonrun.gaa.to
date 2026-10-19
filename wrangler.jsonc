@@ -11,6 +11,7 @@
 			"/_mooncakes/prebuild/*",
 			"/_mooncakes/cli-index",
 			"/_mooncakes/skills/*",
+			"/_mooncakes/user/*",
 			"/*@*",
 			"/*%40*",
 			"/shell"

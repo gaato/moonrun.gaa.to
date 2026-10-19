@@ -6,6 +6,10 @@ import { dirname, resolve } from 'node:path';
 import type * as Browser from 'moonrun-js/browser';
 import { createResolver } from './resolver';
 import { verifySha256 } from '../integrity';
+import { createMooncakesMount } from './mooncakes-mount';
+import { mountRegistry } from './fixtures/mount-registry';
+import { mountProxy, mountServer } from './mount-bridge';
+import { shellFiles } from './work';
 import { interruptCommand, ShellActivity } from './interrupt';
 
 const nativeFetch = globalThis.fetch;
@@ -17,7 +21,7 @@ const fixtures = new Map<string, Uint8Array>();
 const checksums = new Map<string, string>();
 beforeAll(async () => {
 	await mkdir(cache, { recursive: true });
-	for (const name of ['sh', 'echo', 'tr', 'false', 'cat']) {
+	for (const name of ['sh', 'echo', 'tr', 'false', 'cat', 'ls']) {
 		const path = `/cli/${name}@${version}/${name}.wasm`;
 		const file = resolve(cache, `${name}@${version}.wasm`);
 		const get = async (suffix: string) => {
@@ -79,6 +83,9 @@ function resolver() {
 		}
 	});
 }
+function browserResolver(resolve = resolver()): Browser.ResolveCommand {
+	return (name, _args, context) => resolve(name, context.cwd);
+}
 async function run(script: string) {
 	let stdout = '';
 	let stderr = '';
@@ -86,7 +93,7 @@ async function run(script: string) {
 	const host = await browser.createBrowserHost({
 		cwd: '/work',
 		files: { '/work': null },
-		resolveCommand: resolver(),
+		resolveCommand: browserResolver(),
 		stdout: (bytes) => {
 			stdout += decoder.decode(bytes);
 		},
@@ -120,7 +127,7 @@ it('shares /work across commands in an interactive session with streaming input'
 		stdin,
 		cwd: '/work',
 		files: { '/work': null },
-		resolveCommand: resolver(),
+		resolveCommand: browserResolver(),
 		stdout: (bytes) => {
 			stdout += new TextDecoder().decode(bytes);
 		}
@@ -195,5 +202,75 @@ it('keeps sh and /work alive on idle Ctrl+C and retains SIGINT compatibility whi
 	} finally {
 		stdin.end();
 		if (!finished) host.signal(9);
+	}
+}, 30000);
+
+it('runs real ls/cat against the lazy read-only provider through its supervisor bridge and executes a relative mounted wasm', async () => {
+	const r = mountRegistry();
+	const echo = fixtures.get('/cli/echo@0.2.1/echo.wasm')!;
+	r.wasm('/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm', echo);
+	const mount = createMooncakesMount({ fetcher: r.fetcher });
+	const server = mountServer(mount);
+	const proxy = mountProxy((id, request) => {
+		void server.call(request).then((value) => proxy.accept(id, value));
+	});
+	const local = resolver();
+	const mounted = createResolver([], { mount, fetcher: r.fetcher });
+	let stdout = '';
+	let stderr = '';
+	const listing = await browser.createBrowserHost({
+		cwd: '/work',
+		files: shellFiles,
+		mounts: { '/mooncakes': proxy.provider },
+		stdout: (bytes) => {
+			stdout += new TextDecoder().decode(bytes);
+		},
+		stderr: (bytes) => {
+			stderr += new TextDecoder().decode(bytes);
+		}
+	});
+	expect(
+		await listing.run(fixtures.get('/cli/ls@0.2.1/ls.wasm')!, {
+			name: 'ls',
+			args: ['-F', '/mooncakes/gaato']
+		}),
+		stderr
+	).toEqual({ kind: 'completed' });
+	expect(r.zipCalls()).toHaveLength(0);
+	expect(stdout).toContain('kbbi@latest@');
+	const host = await browser.createBrowserHost({
+		cwd: '/work',
+		files: shellFiles,
+		env: { HOME: '/work' },
+		mounts: { '/mooncakes': proxy.provider },
+		resolveCommand: (name, _args, context) =>
+			name.includes('/')
+				? mounted(name, context.cwd)
+				: local(name, context.cwd),
+		stdout: (bytes) => {
+			stdout += new TextDecoder().decode(bytes);
+		},
+		stderr: (bytes) => {
+			stderr += new TextDecoder().decode(bytes);
+		}
+	});
+	try {
+		const outcome = await host.run(fixtures.get('/cli/sh@0.2.1/sh.wasm')!, {
+			name: 'sh',
+			args: [
+				'-c',
+				'cat sample.json; ls /mooncakes/gaato; cat /mooncakes/gaato/kbbi@latest/README.md; cd /mooncakes/gaato/kbbi@0.1.6; ./cmd/kbbi/kbbi.wasm mounted; echo nope > README.md; cat README.md'
+			]
+		});
+		expect(outcome).toEqual({ kind: 'completed' });
+		expect(stdout).toContain('kbbi@0.1.6');
+		expect(stdout).toContain('kbbi@latest');
+		expect(stdout).toContain('mounted\n');
+		expect(stdout).toContain('{"a":[1,2,3]}');
+		expect(stdout.match(/Fixture module/g)).toHaveLength(2);
+		expect(stderr).toContain('Read-only file system');
+		expect(r.zipCalls()).toHaveLength(1);
+	} finally {
+		server.close();
 	}
 }, 30000);

@@ -1,3 +1,4 @@
+import type { MooncakesMount } from './mooncakes-mount';
 import type { Skill } from '../skills';
 import { skillPath } from '../skills';
 import {
@@ -38,6 +39,7 @@ export function skillCommands(skills: readonly Skill[]): SkillCommand[] {
 	);
 }
 export interface ResolverOptions {
+	mount?: MooncakesMount;
 	index?: readonly CliModule[];
 	fetcher?: typeof fetch;
 	signal?: AbortSignal;
@@ -47,7 +49,13 @@ export interface ResolverOptions {
 // One resolver belongs to one shell session, including concurrent/negative lookups.
 export function createResolver(
 	skills: readonly Skill[],
-	{ index = [], fetcher = fetch, signal, onResolved }: ResolverOptions = {}
+	{
+		index = [],
+		fetcher = fetch,
+		signal,
+		onResolved,
+		mount
+	}: ResolverOptions = {}
 ) {
 	const entries = skillCommands(skills);
 	const memo = new Map<string, Promise<Uint8Array | undefined>>();
@@ -88,9 +96,29 @@ export function createResolver(
 		return bytes ? { bytes, path } : undefined;
 	}
 
-	async function resolve(name: string): Promise<Uint8Array | undefined> {
+	async function resolve(
+		name: string,
+		cwd: string
+	): Promise<Uint8Array | undefined> {
 		const candidates: ModulePath[] = [];
 		if (name.includes('/')) {
+			const parts: string[] = [];
+			for (const part of (name.startsWith('/') ? name : cwd + '/' + name).split(
+				'/'
+			)) {
+				if (part === '..') parts.pop();
+				else if (part && part !== '.') parts.push(part);
+			}
+			const absolute = '/' + parts.join('/');
+			if (absolute.startsWith('/mooncakes/')) {
+				if (!absolute.endsWith('.wasm')) return undefined;
+				const result = await mount?.readProgram(
+					absolute.slice('/mooncakes'.length)
+				);
+				if (result) onResolved?.(name, result.path);
+				return result?.bytes;
+			}
+
 			try {
 				const coordinate = parseModulePath(name);
 				if (!coordinate) return undefined;
@@ -118,11 +146,15 @@ export function createResolver(
 		}
 		return undefined;
 	}
-	const resolveName = (name: string): Promise<Uint8Array | undefined> => {
-		let pending = memo.get(name);
+	const resolveName = (
+		name: string,
+		cwd = '/work'
+	): Promise<Uint8Array | undefined> => {
+		const key = name.includes('/') ? cwd + '\0' + name : name;
+		let pending = memo.get(key);
 		if (!pending) {
-			pending = resolve(name);
-			memo.set(name, pending);
+			pending = resolve(name, cwd);
+			memo.set(key, pending);
 		}
 		return pending;
 	};

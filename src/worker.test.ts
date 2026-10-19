@@ -53,6 +53,7 @@ describe('mirror allowlist', () => {
 		[wasm, 'application/wasm'],
 		[checksum, 'text/plain; charset=utf-8'],
 		[archive, 'application/zip'],
+		['/_mooncakes/user/gaato/kbbi/0.1.6.zip', 'application/zip'],
 		['/_mooncakes/prebuild/cli/sh@0.2.1/sh.wasm', 'application/wasm'],
 		['/_mooncakes/skills/cli/sh@0.2.1/skills.zip', 'application/zip'],
 		['/_mooncakes/prebuild/a/b@1.2.3-rc.1%2Bbuild.2/b.wasm', 'application/wasm']
@@ -72,6 +73,9 @@ describe('mirror allowlist', () => {
 	});
 	it.each([
 		'/_mooncakes/other/a/b@1.0.0/b.wasm',
+		'/_mooncakes/user/gaato/kbbi/latest.zip',
+		'/_mooncakes/user/gaato/kbbi/0.1.6.zip/extra',
+		'/_mooncakes/user/gaato/kbbi/0.1.6.wasm',
 		'/_mooncakes/prebuild/a/b/b.wasm',
 		'/_mooncakes/prebuild/a/b@latest/b.wasm',
 		'/_mooncakes/prebuild/a/b@LATEST/b.wasm',

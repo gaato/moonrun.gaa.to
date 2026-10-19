@@ -1,6 +1,8 @@
 /// <reference lib="webworker" />
 import { runInWorker, type BrowserRunHandle } from 'moonrun-js/browser';
 import type { ShellRequest, ShellReply } from './protocol';
+import { mountProxy } from './mount-bridge';
+import { shellFiles } from './work';
 import { interruptCommand, ShellActivity } from './interrupt';
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 const children = new Set<Worker>();
@@ -18,6 +20,9 @@ globalThis.Worker = class extends NativeWorker {
 const reply = (data: ShellReply) => scope.postMessage(data);
 let running: BrowserRunHandle | undefined;
 const activity = new ShellActivity(crypto.randomUUID());
+const mount = mountProxy((id, request) =>
+	reply({ type: 'mount', id, request })
+);
 let next = 0;
 const resolutions = new Map<
 	number,
@@ -28,6 +33,8 @@ scope.onmessage = async ({ data }: MessageEvent<ShellRequest>) => {
 		for (const child of children) child.terminate();
 		reply({ type: 'stopped' });
 		scope.close();
+	} else if (data.type === 'mounted') {
+		mount.accept(data.id, data.result);
 	} else if (data.type === 'resolved') {
 		const pending = resolutions.get(data.id);
 		resolutions.delete(data.id);
@@ -54,19 +61,20 @@ scope.onmessage = async ({ data }: MessageEvent<ShellRequest>) => {
 				args: ['-i'],
 				stdin: 'stream',
 				cwd: '/work',
-				files: { '/work': null },
-				env: { TERM: 'xterm-256color', ...activity.environment },
+				files: shellFiles,
+				mounts: data.mount ? { '/mooncakes': mount.provider } : {},
+				env: { HOME: '/work', TERM: 'xterm-256color', ...activity.environment },
 				stdout: (bytes) => reply({ type: 'output', bytes }),
 				stderr: (bytes) => {
 					const visible = activity.stderr(bytes);
 					if (visible.length) reply({ type: 'output', bytes: visible });
 				},
-				resolveCommand: (name) =>
+				resolveCommand: (name, _args, context) =>
 					new Promise((resolve, reject) => {
 						activity.commandStarted();
 						const id = ++next;
 						resolutions.set(id, { resolve, reject });
-						reply({ type: 'resolve', id, name });
+						reply({ type: 'resolve', id, name, cwd: context.cwd });
 					})
 			});
 			const outcome = await running;

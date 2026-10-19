@@ -23,13 +23,18 @@ export function downloadPath(pathname: string): string | null {
 	}
 	if (parts.some((part) => part.includes('..'))) return null;
 	const [kind, owner, coordinate, ...tail] = parts;
-	if (
-		(kind !== 'prebuild' && kind !== 'skills') ||
-		!owner ||
-		!segment.test(owner) ||
-		!coordinate
-	)
-		return null;
+	if (!owner || !segment.test(owner) || !coordinate) return null;
+	if (kind === 'user') {
+		if (
+			!segment.test(coordinate) ||
+			tail.length !== 1 ||
+			!tail[0].endsWith('.zip') ||
+			!concreteVersion.test(tail[0].slice(0, -4))
+		)
+			return null;
+		return '/' + parts.map(encodeURIComponent).join('/');
+	}
+	if (kind !== 'prebuild' && kind !== 'skills') return null;
 	const [module, version, ...extra] = coordinate.split('@');
 	if (
 		!segment.test(module) ||

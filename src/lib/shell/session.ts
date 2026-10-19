@@ -1,13 +1,19 @@
-import type { RunOutcome } from 'moonrun-js/browser';
+import { mountServer } from './mount-bridge';
+import type { MountProvider, RunOutcome } from 'moonrun-js/browser';
 import type { ShellRequest, ShellReply } from './protocol';
 export function startSession(
 	wasm: Uint8Array,
-	resolveCommand: (name: string) => Promise<Uint8Array | undefined>,
-	output: (bytes: Uint8Array) => void
+	resolveCommand: (
+		name: string,
+		cwd?: string
+	) => Promise<Uint8Array | undefined>,
+	output: (bytes: Uint8Array) => void,
+	mount?: MountProvider
 ) {
 	const worker = new Worker(new URL('./shell.worker.ts', import.meta.url), {
 		type: 'module'
 	});
+	const server = mount ? mountServer(mount) : undefined;
 	let id = 0;
 	let closing = false;
 	const writes = new Map<
@@ -24,6 +30,7 @@ export function startSession(
 	function cleanup() {
 		closing = true;
 		worker.terminate();
+		server?.close();
 		for (const pending of writes.values())
 			pending.reject(new Error('Shell session ended.'));
 		writes.clear();
@@ -35,7 +42,14 @@ export function startSession(
 			return;
 		}
 		if (closing) return;
-		if (data.type === 'output') output(data.bytes);
+		if (data.type === 'mount') {
+			void (
+				server?.call(data.request) ??
+				Promise.resolve({ ok: false as const, error: { code: 'EIO' as const } })
+			).then((result) => {
+				if (!closing) send({ type: 'mounted', id: data.id, result });
+			});
+		} else if (data.type === 'output') output(data.bytes);
 		else if (data.type === 'written') {
 			const pending = writes.get(data.id);
 			writes.delete(data.id);
@@ -48,7 +62,7 @@ export function startSession(
 			cleanup();
 			fail(new Error(data.message));
 		} else if (data.type === 'resolve') {
-			void resolveCommand(data.name).then(
+			void resolveCommand(data.name, data.cwd).then(
 				(bytes) => {
 					if (!closing) send({ type: 'resolved', id: data.id, wasm: bytes });
 				},
@@ -62,7 +76,7 @@ export function startSession(
 		cleanup();
 		fail(new Error(event.message || 'Shell Worker failed.'));
 	};
-	send({ type: 'start', wasm });
+	send({ type: 'start', wasm, ...(mount ? { mount: true } : {}) });
 	return {
 		finished,
 		write(bytes: Uint8Array): Promise<void> {

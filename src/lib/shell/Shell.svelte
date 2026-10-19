@@ -5,6 +5,8 @@
 	import { createResolver, skillCommands } from './resolver';
 	import { cliProgramPath, fetchCliIndex, type CliModule } from '../cli-index';
 	import { LineDiscipline } from './line-discipline';
+	import { createMooncakesMount } from './mooncakes-mount';
+	import { shellHint } from './work';
 	import { startSession } from './session';
 	import { fetchSkills, type Skill } from '../skills';
 	import { exitStatus } from '../execution';
@@ -115,7 +117,9 @@
 			]);
 			if (!alive || abort.signal.aborted) return;
 			skills = registry;
+			const mount = createMooncakesMount({ signal: abort.signal });
 			const resolver = createResolver(skills, {
+				mount,
 				index,
 				signal: abort.signal,
 				onResolved: (name, path) => {
@@ -143,19 +147,20 @@
 			});
 			if (!alive || abort.signal.aborted) return;
 			cliIndex = commands;
-			terminal?.write('\r\n');
+			terminal?.write('\r\n' + shellHint + '\r\n');
 			const running = (session = startSession(
 				wasm,
-				async (name) => {
+				async (name, cwd) => {
 					try {
-						return await resolver(name);
+						return await resolver(name, cwd);
 					} catch (error) {
 						if (!abort.signal.aborted)
 							status = `Could not resolve ${name}: ${String(error)}`;
 						throw error;
 					}
 				},
-				(bytes) => terminal?.write(bytes)
+				(bytes) => terminal?.write(bytes),
+				mount
 			));
 			discipline = new LineDiscipline({
 				echo: (text) => terminal?.write(text),

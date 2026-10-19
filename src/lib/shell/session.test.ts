@@ -1,4 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
+import { createMooncakesMount } from './mooncakes-mount';
+import { mountRegistry } from './fixtures/mount-registry';
 import { startSession } from './session';
 import type { ShellReply, ShellRequest } from './protocol';
 class FakeWorker {
@@ -63,4 +65,45 @@ it('stops the supervisor and rejects pending writes when navigation ends the ses
 	expect(await session.finished).toBeUndefined();
 	await rejected;
 	expect(FakeWorker.current.terminated).toBe(true);
+});
+
+it('keeps providers on the page thread and forwards cwd for mounted command resolution', async () => {
+	vi.stubGlobal('Worker', FakeWorker);
+	const r = mountRegistry();
+	const mount = createMooncakesMount({ fetcher: r.fetcher });
+	const resolve = vi.fn(async (_name: string, _cwd?: string) => undefined);
+	const session = startSession(new Uint8Array(), resolve, () => {}, mount);
+	const worker = FakeWorker.current;
+	expect(worker.sent[0]).toEqual({
+		type: 'start',
+		wasm: new Uint8Array(),
+		mount: true
+	});
+	worker.emit({ type: 'mount', id: 10, request: { op: 'readdir', path: '/' } });
+	await vi.waitFor(() =>
+		expect(worker.sent).toContainEqual({
+			type: 'mounted',
+			id: 10,
+			result: {
+				ok: true,
+				value: [
+					{ name: 'Yoorkin', kind: 'dir' },
+					{ name: 'cli', kind: 'dir' },
+					{ name: 'gaato', kind: 'dir' }
+				]
+			}
+		})
+	);
+	worker.emit({
+		type: 'resolve',
+		id: 11,
+		name: './tool.wasm',
+		cwd: '/mooncakes/owner/mod@1.0.0'
+	});
+	expect(resolve).toHaveBeenCalledWith(
+		'./tool.wasm',
+		'/mooncakes/owner/mod@1.0.0'
+	);
+	worker.emit({ type: 'outcome', outcome: { kind: 'completed' } });
+	await session.finished;
 });
