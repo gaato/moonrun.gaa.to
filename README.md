@@ -2,47 +2,51 @@
 
 An unofficial browser playground for public MoonBit programs on [mooncakes.io](https://mooncakes.io), powered by [moonrun-js](https://github.com/gaato/moonrun-js). Not affiliated with the MoonBit team.
 
-Browse published skills or open a path such as `/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm`. Root packages work too: `/cli/sh@0.2.1/sh.wasm`. `@latest` and omitted versions resolve through the module API and replace the current URL with a pinned version. Repeated `?arg=a&arg=b` parameters are ordered arguments; the editor uses a JSON array to preserve whitespace and empty strings. Run updates the query. Copy link includes edited arguments; stdin and uploaded files are not shared.
+Browse skills or open `/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm`. Root packages work too: `/cli/sh@0.2.1/sh.wasm`. `@latest` and omitted versions resolve through the module API and replace the URL with a pinned version. Repeated `?arg=a&arg=b` parameters preserve argument order; the JSON-array editor also preserves whitespace and empty strings. Copy link includes edited arguments; stdin and files stay on the page.
 
 ## Local development
 
-Requires Node 24, pnpm 12.3.4, and an existing `../moonrun-js` checkout with built `dist/browser/`. This project never builds that dependency. Only `moonrun-js/browser` is imported; changing its dependency to `^0.1.0` later needs no import changes.
+Requires Node 24 and pnpm 12.3.4. moonrun-js is installed from npm; no sibling checkout or dependency build is needed.
 
 ```fish
 mise install
 mise exec -- pnpm install --frozen-lockfile
-mise exec -- pnpm dev
+mise exec -- pnpm build
+mise exec -- pnpm exec wrangler dev --local
 ```
 
 ```fish
-mise exec -- pnpm check
-mise exec -- pnpm lint
-mise exec -- pnpm test
-mise exec -- pnpm build
-mise exec -- pnpm preview
+mise exec -- pnpm verify
+mise exec -- pnpm smoke
+mise exec -- pnpm exec wrangler deploy --dry-run
 ```
 
-## Behavior and layout
+`pnpm dev` and `pnpm preview` serve the frontend only. Use Wrangler locally when running programs, because downloads need the mirror Worker. `pnpm smoke` starts a temporary Wrangler on a free loopback port, checks the SPA fallback (following the static asset service's `@` to `%40` canonical redirect) and a real wasm/checksum download plus rejected paths with curl, then stops it. It requires network access to the public download host. Browser verification is performed separately by the coordinator.
 
-- `src/routes/`: skills catalog, runner catch-all, and shell placeholder.
-- `src/lib/`: URL/argument parsing, integrity and verified cache, skill archives, sanitized Markdown, and Worker execution.
-- `scripts/`: copies the dependency's existing browser distribution, writes security headers, and checks the emitted runtime asset graph.
+## Downloads and execution
+
+The download host sends CORS headers on its 302 response, but the final CloudFront/S3 response does not. The site's Cloudflare Worker therefore mirrors public files under `/_mooncakes/prebuild/…` and `/_mooncakes/skills/…`, fetching from the fixed `https://download.mooncakes.io` origin server-side and following its redirect.
+
+The mirror accepts only GET/HEAD for concrete SemVer coordinates and the matching `.wasm`, `.wasm.sha256` or `skills.zip` files. It rejects queries, traversal, consecutive dots and encoded slashes/backslashes. Client headers and cookies are never forwarded; upstream requests use a fixed User-Agent because CloudFront rejects an empty one. Upstream cookies and other headers are discarded. Successful downloads are cached at the edge for one year as immutable content; errors are not cached. The 64 MiB limit checks both Content-Length and actual streamed bytes. An oversized stream without a trustworthy length is aborted, and its partial body is not cached. HEAD misses use an upstream GET because the public host does not support HEAD.
+
+The browser still verifies wasm against its sibling `.sha256` and skill archives against `archive_digest` before use. Verified browser-cache entries are keyed by URL and digest and rechecked on read. `SKILL.md` extraction permits one document up to 1 MiB; raw HTML/images are omitted and Markdown is sanitized. Checksums establish consistency with registry files, not independent publisher authentication.
+
+Each run gets a fresh Worker, finite UTF-8 stdin and an in-memory VFS under `/work`. Uploaded files have plain, unique filenames and a 64 MiB limit per file. Output display is limited to 1 MiB per stream. An app supervisor forcibly terminates the guest on Stop, because moonrun-js's current handle exposes signals but no termination method.
+
+The mirror only retrieves published program files: guest programs still have **no network relay**, native processes or persistent files. WebAssembly GC, exception handling and JSPI are required.
+
+## Structure and build
+
+- `src/routes/`: skills catalog, runner catch-all and shell placeholder.
+- `src/lib/`: URL/argument parsing, integrity/cache, archives, Markdown and browser Worker execution.
+- `src/worker.ts`: default Cloudflare handler; `src/mirror.ts`: download allowlist, cache and static-assets fallback.
+- `scripts/`: copies npm browser assets, generates CSP headers and checks emitted runtime references.
 - `static/THIRD_PARTY_NOTICES.txt`: bundled software licenses and notices.
 
-Wasm is verified against its sibling `.sha256` before use. Skill archives are verified against `archive_digest` before extracting a single `SKILL.md` (up to 1 MiB). Cache entries are keyed by download URL and digest and reverified on read; unavailable storage falls back to verified downloads. Checksums establish consistency with public registry files, not independent publisher authentication. Raw HTML and images in Markdown are omitted, dangerous links are removed, and no skill instructions are executed by the site.
+Only `moonrun-js/browser` is imported. Its complete prebuilt browser distribution is copied into ignored static assets at `/_moonrun/` to preserve relative Worker, JS and four wasm URLs. Vite excludes it from dependency prebundling. Build checks verify those references and the app Worker import.
 
-Each run gets finite UTF-8 stdin and a fresh VFS under `/work`. Uploaded files have plain filenames (duplicates rejected), with a 64 MiB limit per file. Displayed output is limited to 1 MiB per stream. Stop forcibly terminates the guest Worker through an app supervisor, because the current moonrun-js handle exposes signals but no termination method. The supervisor's Worker tracking is confined to its own global scope.
-
-Programs have **no network relay**, native processes, or persistent files. Network-related failures show an explanation. WebAssembly GC, exception handling and JSPI are required; Chrome verification is performed separately by the coordinator. Unit tests and builds do not claim browser execution coverage.
-
-Vite keeps moonrun-js external at `/_moonrun/index.js`; dev/build copy its complete prebuilt browser distribution verbatim into ignored static assets. This preserves its Worker, shared chunks and four wasm component URLs. `optimizeDeps.exclude` prevents dependency prebundling. Build checks traverse those references and check the app Worker import. Cloudflare static assets serve the SPA fallback with status 200; `wrangler.jsonc` disables workers.dev. There is no deploy workflow. CSP allows the observed download redirect destination, `https://d15l9c1mnzh3r.cloudfront.net`, in addition to the two mooncakes.io origins.
-
-**Upstream delivery blocker (2026-10-20):** an Origin-bearing GET for the kbbi checksum and skill archive redirects to CloudFront. The initial 302 has CORS headers, but the final 200 response did not include `Access-Control-Allow-Origin`. Browser downloads need CORS on that final response as well. This must be fixed by the public file host before direct browser execution can work; the app does not proxy around it.
-
-## CI bootstrap
-
-Until moonrun-js is published on npm, hosted CI needs two repository variables: `MOONRUN_JS_ARCHIVE_URL` (HTTPS URL of a prebuilt npm-layout package tarball with one top-level directory, including `package.json`, `dist/`, and any `bin/` files declared by the package) and `MOONRUN_JS_ARCHIVE_SHA256` (64 hex characters). The workflow verifies and extracts it as `../moonrun-js`, then installs, checks, lints, tests and builds. **CI intentionally fails at bootstrap until those variables are supplied.** It does not build moonrun-js. Remove that restore step when switching to the npm dependency.
+Wrangler runs the Worker first only for the two mirror path prefixes. Other paths use static assets with the SPA fallback and status 200. CSP permits connections only to this origin and mooncakes.io's JSON API. CI installs from the frozen npm lockfile, checks, lints, tests, builds and validates the Cloudflare bundle without deploying. No bootstrap variables or deploy job are needed; workers.dev is disabled.
 
 ## License
 
-Apache-2.0, copyright 2026 Gakuto Furuya. Public programs, skills, metadata and third-party dependencies retain their respective rights; see [NOTICE](NOTICE) and [software notices](static/THIRD_PARTY_NOTICES.txt).
+Apache-2.0, copyright 2026 Gakuto Furuya. Public programs, skills, metadata and dependencies retain their respective rights; see [NOTICE](NOTICE) and [software notices](static/THIRD_PARTY_NOTICES.txt).

@@ -1,3 +1,4 @@
+import { mirroredDownload, mirrorPrefix } from './downloads';
 import { unzipSync, strFromU8 } from 'fflate';
 import { browserCache, verifiedBytes } from './integrity';
 import { parseModulePath, modulePath } from './paths';
@@ -18,20 +19,12 @@ export interface Skill {
 }
 
 export const skillsEndpoint = 'https://mooncakes.io/api-new/v0/skills';
-export function publicDownload(url: string): string {
-	const parsed = new URL(url);
-	if (
-		parsed.origin !== 'https://download.mooncakes.io' ||
-		parsed.username ||
-		parsed.password
-	) {
-		throw new Error('Unexpected public download URL.');
-	}
-	return parsed.href;
-}
 
 export function skillPath(skill: Skill): string {
-	const url = new URL(publicDownload(skill.wasm_url));
+	const url = new URL(
+		mirroredDownload(skill.wasm_url).slice(mirrorPrefix.length),
+		'https://download.mooncakes.io'
+	);
 	if (!url.pathname.startsWith('/prebuild/'))
 		throw new Error('Unexpected prebuild path.');
 	const parsed = parseModulePath(url.pathname.slice('/prebuild'.length));
@@ -93,7 +86,7 @@ export async function loadSkill(
 	signal?: AbortSignal
 ): Promise<string> {
 	const bytes = await verifiedBytes(
-		publicDownload(skill.archive_url),
+		mirroredDownload(skill.archive_url),
 		skill.archive_digest,
 		await browserCache(),
 		fetch,

@@ -60,7 +60,7 @@ for (const file of htmlFiles) {
 const directives = [
 	"default-src 'self'",
 	"base-uri 'none'",
-	"connect-src 'self' https://mooncakes.io https://download.mooncakes.io https://d15l9c1mnzh3r.cloudfront.net",
+	"connect-src 'self' https://mooncakes.io",
 	"font-src 'self'",
 	"form-action 'self'",
 	"frame-ancestors 'none'",

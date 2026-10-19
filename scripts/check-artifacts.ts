@@ -68,10 +68,7 @@ assert.ok(
 const headers = await readFile(resolve(root, '_headers'), 'utf8');
 assert.match(headers, /wasm-unsafe-eval/);
 assert.match(headers, /worker-src 'self'/);
-assert.match(
-	headers,
-	/connect-src 'self' https:\/\/mooncakes.io https:\/\/download.mooncakes.io https:\/\/d15l9c1mnzh3r.cloudfront.net/
-);
+assert.match(headers, /connect-src 'self' https:\/\/mooncakes\.io;/);
 console.log(
 	`Verified ${visited.size} runtime assets, supervisor import, SPA entry and security headers.`
 );
@@ -88,3 +85,12 @@ for (const source of [
 		);
 	}
 }
+
+const config = JSON.parse(await readFile('wrangler.jsonc', 'utf8'));
+assert.equal(config.main, 'src/worker.ts');
+assert.equal(config.assets.binding, 'ASSETS');
+assert.equal(config.assets.not_found_handling, 'single-page-application');
+assert.deepEqual(config.assets.run_worker_first, [
+	'/_mooncakes/prebuild/*',
+	'/_mooncakes/skills/*'
+]);

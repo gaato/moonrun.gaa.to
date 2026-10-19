@@ -1,5 +1,5 @@
 allowBuilds:
   esbuild: true
   workerd: true
-# Keep script execution from implicitly reinstalling or touching the linked checkout.
-verifyDepsBeforeRun: false
+minimumReleaseAgeExclude:
+  - moonrun-js@0.1.0

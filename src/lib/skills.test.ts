@@ -1,12 +1,7 @@
 import { expect, it } from 'vitest';
+import { mirroredDownload } from './downloads';
 import { zipSync, strToU8 } from 'fflate';
-import {
-	extractSkill,
-	filterSkills,
-	publicDownload,
-	skillPath,
-	type Skill
-} from './skills';
+import { extractSkill, filterSkills, skillPath, type Skill } from './skills';
 const zip = (files: Record<string, string>) =>
 	zipSync(
 		Object.fromEntries(Object.entries(files).map(([k, v]) => [k, strToU8(v)]))
@@ -49,5 +44,5 @@ it('filters name, description, author and version and excludes yanked skills', (
 			wasm_url: 'https://download.mooncakes.io/prebuild/cli/sh@0.2.1/sh.wasm'
 		})
 	).toBe('/cli/sh@0.2.1/sh.wasm');
-	expect(() => publicDownload('https://evil.example/a.zip')).toThrow();
+	expect(() => mirroredDownload('https://evil.example/a.zip')).toThrow();
 });

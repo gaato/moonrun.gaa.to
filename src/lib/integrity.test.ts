@@ -81,3 +81,22 @@ describe('verified Cache API wrapper', () => {
 		).toEqual(bytes);
 	});
 });
+
+it('keys relative mirror paths by their actual same-origin URL and digest', async () => {
+	vi.stubGlobal('location', {
+		href: 'https://playground.example/a/b@1.0.0/b.wasm'
+	});
+	try {
+		const path = '/_mooncakes/prebuild/a/b@1.0.0/b.wasm';
+		const cache = new FakeCache();
+		const fetcher = vi.fn<typeof fetch>(async () => new Response(bytes));
+		expect(await verifiedBytes(path, digest, cache, fetcher)).toEqual(bytes);
+		expect(await verifiedBytes(path, digest, cache, fetcher)).toEqual(bytes);
+		expect(fetcher).toHaveBeenCalledOnce();
+		expect(new URL(cacheKey(path, digest)).origin).toBe(
+			'https://playground.example'
+		);
+	} finally {
+		vi.unstubAllGlobals();
+	}
+});

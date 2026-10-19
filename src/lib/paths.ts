@@ -1,3 +1,5 @@
+import { downloadPath, mirrorPrefix } from './downloads';
+
 export interface ModulePath {
 	owner: string;
 	module: string;
@@ -54,7 +56,9 @@ export function modulePath(value: ModulePath): string {
 }
 
 export function wasmUrl(value: ModulePath): string {
-	return `https://download.mooncakes.io/prebuild${modulePath(value)}`;
+	const path = downloadPath(`/prebuild${modulePath(value)}`);
+	if (!path) throw new Error('Program download requires a concrete version.');
+	return mirrorPrefix + path;
 }
 
 export function openPath(input: string): string {

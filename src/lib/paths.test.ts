@@ -27,7 +27,7 @@ describe('module paths', () => {
 		});
 		expect(modulePath(path)).toBe('/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm');
 		expect(wasmUrl(path)).toBe(
-			'https://download.mooncakes.io/prebuild/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm'
+			'/_mooncakes/prebuild/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm'
 		);
 	});
 	it('accepts a root package, latest, missing versions and encoded @', () => {

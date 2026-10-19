@@ -28,7 +28,7 @@ export interface VerifiedCache {
 }
 
 export function cacheKey(url: string, digest: string): string {
-	const key = new URL(url);
+	const key = new URL(url, globalThis.location?.href);
 	key.searchParams.set('__mooncakes_sha256', digestHex(digest));
 	return key.href;
 }
