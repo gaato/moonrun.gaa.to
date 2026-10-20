@@ -1,27 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import type { MountProvider } from 'moonrun-js/browser';
-import { addedFilesProvider, copyCommand, folderMount } from './local-mounts';
-it('stages added files read-only and uncached, reflecting later additions', async () => {
-	const files = new Map([['a.txt', new Uint8Array([1, 2, 3])]]);
-	const staged = addedFilesProvider(files);
-	expect(staged.cache).toBe(false);
-	expect(await staged.readdir('/')).toEqual({
-		ok: true,
-		value: [{ name: 'a.txt', kind: 'file' }]
-	});
-	files.set('b.wasm', new Uint8Array([0]));
-	expect(await staged.stat('/b.wasm')).toEqual({
-		ok: true,
-		value: { kind: 'file', size: 1, mode: 0o444 }
-	});
-	const opened = await staged.open('/a.txt');
-	expect(opened.ok && (await opened.value.read(1, 5))).toEqual({
-		ok: true,
-		value: new Uint8Array([2, 3])
-	});
-	expect(await staged.stat('/a.txt/x')).toMatchObject({ ok: false });
-	expect(staged.write).toBeUndefined();
-});
+import { folderMount } from './folder-mount';
 it('is an empty read-only directory until a folder is attached, then delegates everything', async () => {
 	const folder = folderMount();
 	expect(folder.provider.cache).toBe(false);
@@ -55,9 +34,4 @@ it('is an empty read-only directory until a folder is attached, then delegates e
 		ok: false,
 		error: { code: 'EROFS' }
 	});
-});
-it('quotes added names for one cli/sh input line', () => {
-	expect(copyCommand(['a b.txt', "it's"], '/mnt/.added')).toBe(
-		"cp --no-preserve=mode '/mnt/.added/a b.txt' '/work/a b.txt'; cp --no-preserve=mode '/mnt/.added/it'\\''s' '/work/it'\\''s'\n"
-	);
 });

@@ -34,7 +34,7 @@ The filesystem is moonrun-js's memory VFS plus mounts:
 
 Names that the PATH search does not find fall back to published skills by name or alias (lexicographic full-path order; the first with a prebuilt checksum wins). A skill named like a cli/\* command is shadowed by `/bin`. Names containing `/` run wasm files from the filesystem relative to the spawn cwd, for example `./prog.wasm` or `/mooncakes/gaato/kbbi/cmd/kbbi/kbbi.wasm rumah`. Unknown commands return 127.
 
-"Add files" and dropping files on the terminal add any files (plain names, at most 64 MiB each) to `/work`, so an added `prog.wasm` runs as `./prog.wasm`. moonrun-js cannot write into a running VFS from outside, so the supervisor stages the files in a hidden read-only mount (`/mnt/.added`) and, at the next idle primary prompt, sends sh one line of `cp --no-preserve=mode` commands. The page prints one line for it and redraws the input. Files added while no shell runs are seeded into `/work` at the next start. Added files and opened folders stay in the browser.
+"Add files" and dropping files on the terminal add any files (plain names, at most 64 MiB each) to `/work`, so an added `prog.wasm` runs as `./prog.wasm`. The supervisor writes them into the running shell's memory VFS with moonrun-js's `handle.fs.writeFile`, replacing an existing file, and the page prints one line without disturbing the input line. Files added while no shell runs are seeded into `/work` at the next start. "Download /work" (enabled while a shell runs) reads the live tree with `handle.fs`, zips it with fflate in the supervisor (regular files and directories; symlinks are skipped; at most 256 MiB) and saves `work.zip`. Added files, downloads and opened folders stay in the browser.
 
 `/?cmd=<url-encoded command line>` fills the input after the first prompt without running it; control characters become spaces. "Copy link" copies such a link for the command field, or else the current terminal line.
 
@@ -58,7 +58,7 @@ The browser verifies mirrored wasm against its sibling `.sha256`; cache hits rec
 
 ## Tests
 
-Unit tests cover the mirror, indexes, integrity, the `/bin`, `/mooncakes`, staging and folder providers, the bridge, the session protocol, the line discipline, share links and the bundle script (with fake fetch). Integration tests run the real published cli/sh, echo, tr, false, cat, ls and cp 0.2.1 through the moonrun-js browser host: pipelines from `/bin` on PATH, `ls /bin`, `/work/bin` precedence, `./prog.wasm`, skill fallback, the generated copy line for added files, Ctrl+C, `/mooncakes` listings and mounted executables by absolute and relative path. They download missing fixtures into ignored `.cache/shell-fixtures/` and verify SHA-256 on every use.
+Unit tests cover the mirror, indexes, integrity, the `/bin`, `/mooncakes` and folder providers, the work.zip archiver, the bridge, the session protocol, the line discipline, share links and the bundle script (with fake fetch). Integration tests run the real published cli/sh, echo, tr, false, cat, ls and cp 0.2.1 through the moonrun-js browser host: pipelines from `/bin` on PATH, `ls /bin`, `/work/bin` precedence, `./prog.wasm`, skill fallback, files written into a running shell's `/work` and zipped back, `cp` both ways between `/work` and a fake picked folder at `/mnt/local`, Ctrl+C, `/mooncakes` listings and mounted executables by absolute and relative path. They download missing fixtures into ignored `.cache/shell-fixtures/` and verify SHA-256 on every use.
 
 ## Deploy
 

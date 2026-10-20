@@ -32,6 +32,7 @@
 	let command = $state('');
 	let copied = $state('');
 	let dragging = $state(false);
+	let downloading = $state(false);
 	let canOpenFolder = $state(false);
 	let indexPromise: Promise<CliModule[]> | undefined;
 	const pageController = new AbortController();
@@ -42,7 +43,6 @@
 	// Terminal bookkeeping for lines the page prints between sh prompts.
 	let prompt = '$ ';
 	let atPrompt = false;
-	let redrawLine = false;
 
 	function loadIndex() {
 		return (indexPromise ??= fetchCommandIndex(pageController.signal).catch(
@@ -123,7 +123,6 @@
 		loading = true;
 		warning = '';
 		atPrompt = false;
-		redrawLine = false;
 		status = 'Loading commands…';
 		terminal?.reset();
 		terminal?.write(status);
@@ -184,20 +183,14 @@
 					if (!currentPrompt) return;
 					prompt = currentPrompt;
 					atPrompt = true;
-					if (redrawLine) {
-						redrawLine = false;
-						terminal?.write(discipline?.line ?? '');
-					}
 					if (prefill && currentPrompt === '$ ') {
 						discipline?.input(prefill);
 						prefill = '';
 					}
 				},
-				added: (names) => {
-					// sh prompts again after copying; the input line is redrawn then.
-					terminal?.write(`\r\x1b[2KAdded ${names.join(', ')} to /work.\r\n`);
-					atPrompt = false;
-					redrawLine = true;
+				added: (names, failures) => {
+					if (names.length) notice(`Added ${names.join(', ')} to /work.`);
+					for (const failure of failures) notice(`Could not add ${failure}`);
 				},
 				mounts: {
 					[binMount]: createBinMount(commands, load),
@@ -294,6 +287,25 @@
 				status = String(error);
 		}
 	}
+	async function downloadWork() {
+		if (!session) return;
+		downloading = true;
+		try {
+			const bytes = await session.download();
+			const url = URL.createObjectURL(
+				new Blob([new Uint8Array(bytes)], { type: 'application/zip' })
+			);
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = 'work.zip';
+			link.click();
+			setTimeout(() => URL.revokeObjectURL(url), 60_000);
+		} catch (error) {
+			status = `Could not download /work: ${error instanceof Error ? error.message : String(error)}`;
+		} finally {
+			downloading = false;
+		}
+	}
 	async function copyLink() {
 		const link = shareLink(location.origin, command || discipline?.line || '');
 		try {
@@ -317,10 +329,10 @@
 	Unofficial, not affiliated with the MoonBit team.
 </p>
 <p class="mb-4 text-sm">
-	Add files or drop them on the terminal to copy them into /work{#if canOpenFolder},
-		or open a folder at /mnt/local{/if}. Your files stay in this browser. Enter
-	sends a line · Ctrl+L redraws · Ctrl+C interrupts (may exit sh) · Ctrl+D on an
-	empty line ends input.
+	Add files or drop them on the terminal to put them in /work, download /work as
+	work.zip{#if canOpenFolder}, or open a folder at /mnt/local{/if}. Your files
+	stay in this browser. Enter sends a line · Ctrl+L redraws · Ctrl+C interrupts
+	(may exit sh) · Ctrl+D on an empty line ends input.
 </p>
 <div
 	role="region"
@@ -373,6 +385,12 @@
 	/>
 	<button type="button" class="btn" onclick={() => filePicker.click()}
 		>Add files</button
+	>
+	<button
+		type="button"
+		class="btn"
+		disabled={!active || downloading}
+		onclick={() => void downloadWork()}>Download /work</button
 	>
 	{#if canOpenFolder}<button
 			type="button"

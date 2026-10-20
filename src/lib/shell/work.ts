@@ -14,17 +14,16 @@ locally; programs have no network access.
             cat /mooncakes/<owner>/<module>/moon.mod.json shows the version
 /mnt/local  a folder you open with "Open folder" (read-write)
 
-"Add files" (or dropping files on the terminal) copies them into /work.
-Run an added wasm file with ./prog.wasm. Your files stay in this browser.
+"Add files" (or dropping files on the terminal) writes them into /work, and
+"Download /work" saves it as work.zip. Run an added wasm file with ./prog.wasm.
+Your files stay in this browser.
 Try: ls /bin; jq .a[] sample.json; cowsay hello
 `,
 	'/work/sample.json': '{"a":[1,2,3]}\n'
 } as const;
 export const shellHint =
 	'moonrun-js running cli/sh from moonbit-community/cmd. Try: ls /bin · cat README.txt · jq .a[] sample.json';
-// Mount points. Added files wait in a hidden read-only mount until sh copies them.
 export const binMount = '/bin';
 export const mooncakesMount = '/mooncakes';
 export const folderPath = '/mnt/local';
-export const addedPath = '/mnt/.added';
 export const shellPath = '/work/bin:/bin';

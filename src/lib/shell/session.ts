@@ -10,8 +10,8 @@ export interface SessionOptions {
 	/** Fallback for names the filesystem PATH search does not find. */
 	resolveCommand: (name: string) => Promise<Uint8Array | undefined>;
 	output: (bytes: Uint8Array, prompt?: '$ ' | '> ') => void;
-	/** Called when sh is about to copy added files into /work. */
-	added?: (names: string[]) => void;
+	/** Called after added files were written into /work (or failed). */
+	added?: (names: string[], failures: string[]) => void;
 	/** Page-thread providers, bridged into the supervisor Worker. */
 	mounts?: Readonly<Record<string, MountProvider>>;
 	files?: AddedFile[];
@@ -36,6 +36,10 @@ export function startSession({
 		number,
 		{ resolve(): void; reject(error: Error): void }
 	>();
+	const archives = new Map<
+		number,
+		{ resolve(bytes: Uint8Array): void; reject(error: Error): void }
+	>();
 	let finish: (outcome: RunOutcome | undefined) => void;
 	let fail: (error: Error) => void;
 	const finished = new Promise<RunOutcome | undefined>((resolve, reject) => {
@@ -47,9 +51,10 @@ export function startSession({
 		closing = true;
 		worker.terminate();
 		server.close();
-		for (const pending of writes.values())
+		for (const pending of [...writes.values(), ...archives.values()])
 			pending.reject(new Error('Shell session ended.'));
 		writes.clear();
+		archives.clear();
 	}
 	worker.onmessage = ({ data }: MessageEvent<ShellReply>) => {
 		if (data.type === 'stopped') {
@@ -63,8 +68,13 @@ export function startSession({
 				if (!closing) send({ type: 'mounted', id: data.id, result });
 			});
 		} else if (data.type === 'output') output(data.bytes, data.prompt);
-		else if (data.type === 'added') added?.(data.names);
-		else if (data.type === 'written') {
+		else if (data.type === 'added') added?.(data.names, data.failures);
+		else if (data.type === 'archive') {
+			const pending = archives.get(data.id);
+			archives.delete(data.id);
+			if (data.bytes) pending?.resolve(data.bytes);
+			else pending?.reject(new Error(data.error ?? 'Download failed.'));
+		} else if (data.type === 'written') {
 			const pending = writes.get(data.id);
 			writes.delete(data.id);
 			if (data.error) pending?.reject(new Error(data.error));
@@ -115,6 +125,15 @@ export function startSession({
 		},
 		addFiles(files: AddedFile[]) {
 			if (!closing) send({ type: 'add', files });
+		},
+		/** work.zip of the live /work tree. */
+		download(): Promise<Uint8Array> {
+			if (closing) return Promise.reject(new Error('Shell session ended.'));
+			const key = ++id;
+			return new Promise((resolve, reject) => {
+				archives.set(key, { resolve, reject });
+				send({ type: 'download', id: key });
+			});
 		},
 		mountFolder(handle: BrowserDirectoryHandle) {
 			if (!closing) send({ type: 'folder', handle });

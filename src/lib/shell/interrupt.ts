@@ -12,7 +12,6 @@ export class ShellActivity {
 	// Set when input reaches sh; cleared when sh prompts again. Filesystem PATH
 	// lookups no longer pass through the resolver, so input is the observable start.
 	running = false;
-	private prompted = false;
 	readonly environment: { PS1: string; PS2: string };
 	prompt: '$ ' | '> ' = '$ ';
 	private markers: Map<string, '$ ' | '> '>;
@@ -28,10 +27,6 @@ export class ShellActivity {
 	}
 	commandStarted(): void {
 		this.running = true;
-	}
-	/** At a primary prompt, with no input sent since. */
-	get idle(): boolean {
-		return this.prompted && !this.running && this.prompt === '$ ';
 	}
 	stderr(bytes: Uint8Array): Uint8Array {
 		const output: number[] = [];
@@ -51,7 +46,6 @@ export class ShellActivity {
 				this.prompt = prompt;
 				this.pending = '';
 				this.running = false;
-				this.prompted = true;
 			}
 		}
 		return new Uint8Array(output);

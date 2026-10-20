@@ -2,4 +2,4 @@ allowBuilds:
   esbuild: true
   workerd: true
 minimumReleaseAgeExclude:
-  - moonrun-js@0.1.2
+  - moonrun-js@0.1.3

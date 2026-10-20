@@ -67,8 +67,17 @@ it('bridges byte input/output, command resolution, signal and EOF to runInWorker
 	const files = [{ name: 'a.txt', bytes: new Uint8Array([5]) }];
 	session.addFiles(files);
 	expect(worker.sent).toContainEqual({ type: 'add', files });
-	worker.emit({ type: 'added', names: ['a.txt'] });
-	expect(added).toHaveBeenCalledWith(['a.txt']);
+	worker.emit({ type: 'added', names: ['a.txt'], failures: ['b: EISDIR'] });
+	expect(added).toHaveBeenCalledWith(['a.txt'], ['b: EISDIR']);
+	const archive = session.download();
+	const request = worker.sent.at(-1) as { type: 'download'; id: number };
+	expect(request.type).toBe('download');
+	worker.emit({ type: 'archive', id: request.id, bytes: new Uint8Array([7]) });
+	expect(await archive).toEqual(new Uint8Array([7]));
+	const failing = session.download();
+	const next = worker.sent.at(-1) as { type: 'download'; id: number };
+	worker.emit({ type: 'archive', id: next.id, error: 'too large' });
+	await expect(failing).rejects.toThrow('too large');
 	worker.emit({ type: 'outcome', outcome: { kind: 'completed' } });
 	expect(await session.finished).toEqual({ kind: 'completed' });
 	expect(worker.terminated).toBe(true);
@@ -82,11 +91,13 @@ it('stops the supervisor and rejects pending writes when navigation ends the ses
 	});
 	const writing = session.write(new Uint8Array([1]));
 	const rejected = expect(writing).rejects.toThrow('ended');
+	const archiving = expect(session.download()).rejects.toThrow('ended');
 	session.stop();
 	expect(FakeWorker.current.sent.at(-1)).toEqual({ type: 'stop' });
 	FakeWorker.current.emit({ type: 'stopped' });
 	expect(await session.finished).toBeUndefined();
 	await rejected;
+	await archiving;
 	expect(FakeWorker.current.terminated).toBe(true);
 });
 

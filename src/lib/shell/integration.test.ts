@@ -10,17 +10,20 @@ import { userAgent } from '../downloads';
 import { createMooncakesMount } from './mooncakes-mount';
 import { mountRegistry } from './fixtures/mount-registry';
 import { mountProxy, mountServer } from './mount-bridge';
-import { addedPath, shellFiles, shellPath } from './work';
+import { folderPath, shellFiles, shellPath } from './work';
 import { interruptCommand, ShellActivity } from './interrupt';
 import { createBinMount } from './bin-mount';
-import { addedFilesProvider, copyCommand } from './local-mounts';
+import { folderMount } from './folder-mount';
+import { archiveTree } from './work-archive';
+import { FakeFolder } from './fixtures/directory-handle';
+import { strFromU8, unzipSync } from 'fflate';
 
 const nativeFetch = globalThis.fetch;
 const cache = resolve('.cache/shell-fixtures');
 let browser: typeof Browser;
 // Stable execution fixtures, not the runtime's command/version catalog.
 const version = '0.2.1';
-const names = ['sh', 'echo', 'tr', 'false', 'cat', 'ls', 'cp'];
+const names = ['sh', 'echo', 'tr', 'false', 'cat', 'ls', 'cp', 'mkdir'];
 const fixtures = new Map<string, Uint8Array>();
 const checksums = new Map<string, string>();
 beforeAll(async () => {
@@ -91,7 +94,9 @@ const skills = vi.fn(async (name: string) =>
 async function run(
 	script: string,
 	files: Browser.BrowserFiles = shellFiles,
-	extra?: Record<string, MountProvider>
+	extra?: Record<string, MountProvider>,
+	// Providers that live next to the run in the supervisor (no bridge).
+	local: Record<string, MountProvider> = {}
 ) {
 	let stdout = '';
 	let stderr = '';
@@ -100,7 +105,7 @@ async function run(
 		cwd: '/work',
 		files,
 		env,
-		mounts: mounts(extra),
+		mounts: { ...mounts(extra), ...local },
 		resolveCommand: (name) => skills(name),
 		stdout: (bytes) => {
 			stdout += decoder.decode(bytes);
@@ -143,19 +148,73 @@ it('returns the normal command-not-found diagnostic and 127', async () => {
 	expect(result.outcome).toEqual({ kind: 'exited', code: 127 });
 	expect(result.stderr).toContain('No such file or directory');
 }, 30000);
-it('copies staged added files into /work with the generated cp line', async () => {
-	const staged = new Map([
-		["it's a file.txt", new TextEncoder().encode('added\n')],
-		['tool.wasm', program('echo')]
+it('writes added files into the live /work of a running shell and zips /work', async () => {
+	let stdout = '';
+	let stderr = '';
+	const stdin = new browser.BrowserStdin();
+	const host = await browser.createBrowserHost({
+		stdin,
+		cwd: '/work',
+		files: shellFiles,
+		env,
+		mounts: mounts(),
+		stdout: (bytes) => {
+			stdout += new TextDecoder().decode(bytes);
+		},
+		stderr: (bytes) => {
+			stderr += new TextDecoder().decode(bytes);
+		}
+	});
+	const running = host.run(sh(), { name: 'sh', args: ['-i'] });
+	// As the supervisor does with handle.fs; an existing file is replaced.
+	await host.memoryFs.writeFile('/work/sample.json', '{"b":true}\n');
+	await host.memoryFs.writeFile("/work/it's a file.txt", 'added\n');
+	await host.memoryFs.writeFile('/work/tool.wasm', program('echo'));
+	await stdin.write(
+		new TextEncoder().encode(
+			'cat "it\'s a file.txt" sample.json; ./tool.wasm ran; echo made > made.txt\n'
+		)
+	);
+	const deadline = Date.now() + 5000;
+	while (!stdout.includes('ran\n') && Date.now() < deadline)
+		await new Promise((resolve) => setTimeout(resolve, 5));
+	const files = unzipSync(await archiveTree(host.memoryFs));
+	stdin.end();
+	expect(await running, stderr).toEqual({ kind: 'completed' });
+	expect(stdout).toBe('added\n{"b":true}\nran\n');
+	expect(Object.keys(files).sort()).toEqual([
+		'work/README.txt',
+		'work/bin/',
+		"work/it's a file.txt",
+		'work/made.txt',
+		'work/sample.json',
+		'work/tool.wasm'
 	]);
+	expect(strFromU8(files['work/made.txt'])).toBe('made\n');
+	await expect(
+		host.memoryFs.writeFile('/work/late', 'x')
+	).rejects.toMatchObject({
+		code: 'EBADF'
+	});
+}, 30000);
+it('copies between an opened folder at /mnt/local and /work with real cp', async () => {
+	const picked = new FakeFolder('picked');
+	picked.files.set('in.txt', new TextEncoder().encode('from folder\n'));
+	const folder = folderMount();
+	folder.attach(browser.directoryHandleProvider(picked));
 	const result = await run(
-		copyCommand([...staged.keys()], addedPath).trim() +
-			'; cat "/work/it\'s a file.txt"; ./tool.wasm ran',
+		// cli/cp 0.2.1 needs --no-preserve=mode here (it cannot read source modes).
+		`cp --no-preserve=mode ${folderPath}/in.txt /work/in.txt; cat /work/in.txt; echo from work > out.txt; cp --no-preserve=mode out.txt ${folderPath}/out.txt; mkdir ${folderPath}/made; ls ${folderPath}`,
 		shellFiles,
-		{ [addedPath]: addedFilesProvider(staged) }
+		{},
+		{ [folderPath]: folder.provider }
 	);
 	expect(result.outcome, result.stderr).toEqual({ kind: 'completed' });
-	expect(result.stdout).toBe('added\nran\n');
+	expect(result.stdout, result.stderr).toBe(
+		'from folder\nin.txt\nmade\nout.txt\n'
+	);
+	expect(strFromU8(picked.files.get('out.txt')!)).toBe('from work\n');
+	expect(picked.folders.has('made')).toBe(true);
 }, 30000);
 it('shares /work across commands in an interactive session with streaming input', async () => {
 	let stdout = '';
@@ -215,13 +274,13 @@ it('keeps sh and /work alive on idle Ctrl+C and retains SIGINT compatibility whi
 		await stdin.write(new TextEncoder().encode(source + '\n'));
 	}
 	try {
-		await until(() => activity.idle);
+		await until(() => stderr.endsWith('$ ') && !activity.running);
 		interruptCommand(host, activity.running);
 		await send('echo keep > saved');
-		await until(() => activity.idle);
+		await until(() => stderr.endsWith('$ ') && !activity.running);
 		interruptCommand(host, activity.running);
 		await send('cat saved');
-		await until(() => activity.idle);
+		await until(() => stderr.endsWith('$ ') && !activity.running);
 		expect(stdout).toBe('keep\n');
 		expect(finished).toBe(false);
 		expect(stderr).not.toContain('shell-prompt');

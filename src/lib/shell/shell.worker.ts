@@ -4,11 +4,12 @@ import {
 	runInWorker,
 	type BrowserRunHandle
 } from 'moonrun-js/browser';
-import type { ShellRequest, ShellReply } from './protocol';
+import type { AddedFile, ShellRequest, ShellReply } from './protocol';
 import { mountProxy } from './mount-bridge';
-import { addedPath, folderPath, shellFiles, shellPath } from './work';
+import { folderPath, shellFiles, shellPath } from './work';
 import { interruptCommand, ShellActivity } from './interrupt';
-import { addedFilesProvider, copyCommand, folderMount } from './local-mounts';
+import { folderMount } from './folder-mount';
+import { archiveTree } from './work-archive';
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 const children = new Set<Worker>();
 const NativeWorker = globalThis.Worker;
@@ -28,26 +29,39 @@ const activity = new ShellActivity(crypto.randomUUID());
 const bridge = mountProxy((id, mount, request) =>
 	reply({ type: 'mount', id, mount, request })
 );
-// The folder and added-file providers live here, next to the run.
+// The folder provider lives here, next to the run.
 const folder = folderMount();
-const added = new Map<string, Uint8Array>();
-let waiting: string[] = [];
-let copying: string[] = [];
-// Added files are copied by sh itself (cp from the staging mount) at the next idle
-// primary prompt, so they land in the memory /work like files sh writes.
-function copyAdded() {
-	if (!running || !activity.idle) return;
-	// The previous copy has finished once sh prompts again.
-	for (const name of copying) if (!waiting.includes(name)) added.delete(name);
-	copying = [];
-	if (!waiting.length) return;
-	copying = [...new Set(waiting)];
-	waiting = [];
-	reply({ type: 'added', names: copying });
-	activity.commandStarted();
-	void running
-		.write(new TextEncoder().encode(copyCommand(copying, addedPath)))
-		.catch(() => {});
+// Added files go straight into the live memory /work; an existing file is replaced.
+async function addFiles(files: AddedFile[]) {
+	const names: string[] = [];
+	const failures: string[] = [];
+	for (const file of files) {
+		try {
+			if (!running) throw new Error('Shell is not running.');
+			await running.fs.writeFile(`/work/${file.name}`, file.bytes);
+			names.push(file.name);
+		} catch (error) {
+			failures.push(
+				`${file.name}: ${error instanceof Error ? error.message : String(error)}`
+			);
+		}
+	}
+	reply({ type: 'added', names, failures });
+}
+async function download(id: number) {
+	try {
+		if (!running) throw new Error('Shell is not running.');
+		const bytes = await archiveTree(running.fs);
+		scope.postMessage({ type: 'archive', id, bytes } satisfies ShellReply, [
+			bytes.buffer
+		]);
+	} catch (error) {
+		reply({
+			type: 'archive',
+			id,
+			error: error instanceof Error ? error.message : String(error)
+		});
+	}
 }
 let next = 0;
 const resolutions = new Map<
@@ -71,13 +85,9 @@ scope.onmessage = async ({ data }: MessageEvent<ShellRequest>) => {
 			interruptCommand(running, activity.running);
 		else running?.signal(data.number);
 	} else if (data.type === 'end') running?.end();
-	else if (data.type === 'add') {
-		for (const file of data.files) {
-			added.set(file.name, file.bytes);
-			waiting.push(file.name);
-		}
-		copyAdded();
-	} else if (data.type === 'folder') {
+	else if (data.type === 'add') void addFiles(data.files);
+	else if (data.type === 'download') void download(data.id);
+	else if (data.type === 'folder') {
 		folder.attach(directoryHandleProvider(data.handle));
 	} else if (data.type === 'write') {
 		try {
@@ -107,8 +117,7 @@ scope.onmessage = async ({ data }: MessageEvent<ShellRequest>) => {
 					...Object.fromEntries(
 						data.mounts.map((mount) => [mount, bridge.provider(mount)])
 					),
-					[folderPath]: folder.provider,
-					[addedPath]: addedFilesProvider(added)
+					[folderPath]: folder.provider
 				},
 				env: {
 					HOME: '/work',
@@ -121,7 +130,6 @@ scope.onmessage = async ({ data }: MessageEvent<ShellRequest>) => {
 					const visible = activity.stderr(bytes);
 					if (visible.length)
 						reply({ type: 'output', bytes: visible, prompt: activity.prompt });
-					copyAdded();
 				},
 				// Only names missing from the filesystem PATH reach the page resolver.
 				resolveCommand: (name) =>

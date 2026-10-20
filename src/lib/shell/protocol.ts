@@ -18,6 +18,7 @@ export type ShellRequest =
 	| { type: 'end' | 'stop' }
 	| { type: 'signal'; number: number }
 	| { type: 'add'; files: AddedFile[] }
+	| { type: 'download'; id: number }
 	| { type: 'folder'; handle: BrowserDirectoryHandle }
 	| { type: 'mounted'; id: number; result: MountReply }
 	| { type: 'resolved'; id: number; wasm?: Uint8Array; failed?: boolean };
@@ -25,7 +26,8 @@ export type ShellReply =
 	| { type: 'mount'; id: number; mount: string; request: MountCall }
 	| { type: 'output'; bytes: Uint8Array; prompt?: '$ ' | '> ' }
 	| { type: 'resolve'; id: number; name: string }
-	| { type: 'added'; names: string[] }
+	| { type: 'added'; names: string[]; failures: string[] }
+	| { type: 'archive'; id: number; bytes?: Uint8Array; error?: string }
 	| { type: 'written'; id: number; error?: string }
 	| { type: 'outcome'; outcome: RunOutcome }
 	| { type: 'error'; message: string }
