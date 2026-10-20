@@ -1,21 +1,25 @@
-mooncakes-playground
+moonrun.gaa.to
 Copyright 2026 Gakuto Furuya
 Licensed under the Apache License, Version 2.0. See LICENSE.
 
 This is an unofficial project and is not affiliated with the MoonBit team.
-Public programs, module sources, skills, SKILL.md documents, registry metadata, names and marks
-from mooncakes.io and download.mooncakes.io are third-party content. They are
-fetched on demand and remain subject to their publishers' respective licenses
-and rights. Package-manifest test fixtures include snippets from cli/sh,
-gaato/kbbi and Yoorkin/cowsay; see src/lib/shell/fixtures/packages/README.md.
-This project's license does not grant rights to that content.
+
+The deployed site bundles the prebuilt cli/* executables from
+moonbit-community/cmd (https://github.com/moonbit-community/cmd), published on
+mooncakes.io under the Apache License, Version 2.0. They are downloaded and
+verified at build time and are not part of this repository.
+
+Module sources, skills, registry metadata, names and marks from mooncakes.io
+and download.mooncakes.io are third-party content. They are fetched on demand
+and remain subject to their publishers' respective licenses and rights.
+Package-manifest test fixtures include snippets from cli/sh, gaato/kbbi and
+Yoorkin/cowsay; see src/lib/shell/fixtures/packages/README.md. This project's
+license does not grant rights to that content.
 
 Bundled third-party software includes:
 - Svelte, SvelteKit, Tailwind CSS, daisyUI, clsx, devalue, esm-env: MIT
 - xterm.js (@xterm/xterm) and @xterm/addon-fit: MIT
 - fflate: MIT
-- marked: MIT
-- DOMPurify: Apache-2.0 OR MPL-2.0 (used under Apache-2.0)
 - moonrun-js and its MoonBit-derived components: Apache-2.0
 - @noble/ciphers: MIT
 - SQLite (through moonrun-js): public domain

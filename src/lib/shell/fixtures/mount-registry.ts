@@ -17,15 +17,6 @@ export function mountRegistry() {
 	];
 	const routes = new Map<string, () => Response | Promise<Response>>();
 	routes.set(modulesEndpoint, () => Response.json(modules));
-	routes.set(modulesEndpoint + '/gaato/kbbi', () =>
-		Response.json({
-			versions: [
-				{ version: '0.1.6' },
-				{ version: '0.1.5' },
-				{ version: '0.1.0', yanked: true }
-			]
-		})
-	);
 	function zip(
 		owner: string,
 		name: string,

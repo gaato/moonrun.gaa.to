@@ -6,15 +6,14 @@ import {
 	packageFixture,
 	wasmFixture
 } from './fixtures/mount-registry';
-import { createResolver } from './resolver';
-beforeEach(() => vi.stubGlobal('location', new URL('https://playground.test')));
+beforeEach(() => vi.stubGlobal('location', new URL('https://moonrun.test')));
 afterEach(() => vi.unstubAllGlobals());
-const root = '/gaato/kbbi@0.1.6';
+const root = '/gaato/kbbi';
 function setup() {
 	const r = mountRegistry();
 	return { ...r, mount: createMooncakesMount({ fetcher: r.fetcher }) };
 }
-it('lists non-yanked owners and pinned modules with real @latest symlinks, without any source zip', async () => {
+it('lists non-yanked owners and their modules at the latest version, without any source zip', async () => {
 	const r = setup();
 	expect(await r.mount.stat('/')).toEqual({
 		ok: true,
@@ -31,44 +30,39 @@ it('lists non-yanked owners and pinned modules with real @latest symlinks, witho
 	});
 	expect(await r.mount.readdir('/gaato')).toEqual({
 		ok: true,
-		value: [
-			{ name: 'kbbi@0.1.6', kind: 'dir' },
-			{ name: 'kbbi@latest', kind: 'symlink' }
-		]
+		value: [{ name: 'kbbi', kind: 'dir' }]
 	});
-	expect(await r.mount.stat(root)).toMatchObject({
+	expect(await r.mount.stat(root)).toEqual({
 		ok: true,
-		value: { kind: 'dir' }
+		value: { kind: 'dir', mode: 0o555 }
 	});
-	expect(await r.mount.stat('/gaato/kbbi@latest')).toMatchObject({
-		ok: true,
-		value: { kind: 'symlink' }
-	});
-	expect(await r.mount.readlink!('/gaato/kbbi@latest')).toEqual({
-		ok: true,
-		value: 'kbbi@0.1.6'
-	});
+	expect(r.mount.readlink).toBeUndefined();
 	expect(r.fetcher).toHaveBeenCalledTimes(1);
 	expect(r.zipCalls()).toHaveLength(0);
 });
-it('stats old existing non-yanked versions through one detail request, without a zip', async () => {
+it('has no versioned or @latest entries and keeps the session version fixed', async () => {
 	const r = setup();
-	expect(await r.mount.stat('/gaato/kbbi@0.1.5')).toMatchObject({
-		ok: true,
-		value: { kind: 'dir' }
-	});
-	expect(await r.mount.stat('/gaato/kbbi@0.1.5')).toMatchObject({ ok: true });
-	for (const version of ['0.1.0', '9.9.9', 'invalid'])
-		expect(await r.mount.stat('/gaato/kbbi@' + version)).toEqual({
+	for (const path of [
+		'/gaato/kbbi@0.1.6',
+		'/gaato/kbbi@0.1.5',
+		'/gaato/kbbi@latest',
+		'/gaato/missing',
+		'/nobody/yanked'
+	])
+		expect(await r.mount.stat(path)).toEqual({
 			ok: false,
 			error: { code: 'ENOENT' }
 		});
+	r.modules[0].version = '0.2.0';
+	expect(await r.mount.readdir(root)).toMatchObject({ ok: true });
+	expect(r.zipCalls().map(([url]) => url)).toEqual([
+		'/_mooncakes/user/gaato/kbbi/0.1.6.zip'
+	]);
 	expect(
-		r.fetcher.mock.calls.filter(
-			([url]) => url === modulesEndpoint + '/gaato/kbbi'
+		r.fetcher.mock.calls.some(([url]) =>
+			String(url).startsWith(modulesEndpoint + '/')
 		)
-	).toHaveLength(1);
-	expect(r.zipCalls()).toHaveLength(0);
+	).toBe(false);
 });
 it.each(['list module', 'list below', 'open file', 'stat below'])(
 	'fetches the zip only when looking inside: %s',
@@ -86,7 +80,6 @@ it.each(['list module', 'list below', 'open file', 'stat below'])(
 		expect(r.zipCalls()).toHaveLength(1);
 		await r.mount.readdir(root);
 		await r.mount.stat(root + '/README.md');
-		await r.mount.readdir('/gaato/kbbi@latest');
 		expect(r.zipCalls()).toHaveLength(1);
 	}
 );
@@ -126,7 +119,7 @@ it('limits concurrent archive jobs to four, globally across all modules', async 
 				)
 		);
 	const done = Promise.all(
-		Array.from({ length: 9 }, (_, i) => r.mount.readdir(`/owner/m${i}@1.0.0`))
+		Array.from({ length: 9 }, (_, i) => r.mount.readdir(`/owner/m${i}`))
 	);
 	await vi.waitFor(() => expect(releases).toHaveLength(4));
 	for (let i = 0; i < 9; i++) {
@@ -173,11 +166,11 @@ it('synthesizes checksum-backed executables in nested and root packages, not lib
 				!String(url).includes('/cmd/')
 		)
 	).toBe(false);
-	expect(await r.mount.readdir('/cli/sh@0.2.1')).toMatchObject({
+	expect(await r.mount.readdir('/cli/sh')).toMatchObject({
 		ok: true,
 		value: expect.arrayContaining([{ name: 'sh.wasm', kind: 'file' }])
 	});
-	expect(await r.mount.readdir('/Yoorkin/cowsay@0.1.0')).toEqual({
+	expect(await r.mount.readdir('/Yoorkin/cowsay')).toEqual({
 		ok: true,
 		value: [{ name: 'moon.pkg', kind: 'file' }]
 	});
@@ -208,20 +201,6 @@ it('provides read-only modes and returns EROFS for every write capability withou
 	expect(await r.mount.rename!('/file', '/new')).toEqual(expected);
 	expect(r.fetcher).not.toHaveBeenCalled();
 });
-it('resolves absolute and relative mounted wasm using cwd and keeps metadata source files non-executable', async () => {
-	const r = setup();
-	const resolve = createResolver([], { fetcher: r.fetcher, mount: r.mount });
-	for (const [name, cwd] of [
-		['/mooncakes' + root + '/cmd/kbbi/kbbi.wasm', '/work'],
-		['./cmd/kbbi/kbbi.wasm', '/mooncakes' + root],
-		['../mooncakes/gaato/kbbi@latest/cmd/kbbi/kbbi.wasm', '/work']
-	])
-		expect(await resolve(name, cwd)).toEqual(wasmFixture);
-	expect(await resolve('./cmd/kbbi/kbbi.wasm', '/work')).toBeUndefined();
-	expect(await resolve('/mooncakes' + root + '/README.md')).toBeUndefined();
-	expect(r.zipCalls()).toHaveLength(1);
-});
-
 it('rejects unsafe archive paths and memoizes the extraction failure', async () => {
 	const r = setup();
 	r.zip('gaato', 'kbbi', '0.1.6', { '../escape.txt': 'no' });

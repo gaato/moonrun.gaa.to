@@ -3,7 +3,12 @@ import {
 	filterCliIndex,
 	modulesEndpoint
 } from './lib/cli-index';
-import { downloadOrigin, downloadPath, mirrorPrefix } from './lib/downloads';
+import {
+	downloadOrigin,
+	downloadPath,
+	mirrorPrefix,
+	userAgent
+} from './lib/downloads';
 
 export const maxResponseBytes = 64 * 1024 * 1024;
 interface Assets {
@@ -94,7 +99,7 @@ async function cliIndex(
 					redirect: 'follow',
 					headers: {
 						'Accept-Encoding': 'identity',
-						'User-Agent': 'mooncakes-playground/0.1'
+						'User-Agent': userAgent
 					}
 				})
 			);
@@ -127,32 +132,7 @@ export async function handleRequest(
 ): Promise<Response> {
 	// Read the raw path before constructing a URL, which normalizes dot segments.
 	const rawPath = request.url.match(/^https?:\/\/[^/]+(\/[^?#]*)/)?.[1] ?? '/';
-	if (!rawPath.startsWith(mirrorPrefix + '/')) {
-		if (
-			(request.method === 'GET' || request.method === 'HEAD') &&
-			(/@|%40/i.test(rawPath) || rawPath === '/shell')
-		) {
-			const shell = await env.ASSETS.fetch(
-				new Request(new URL('/index.html', request.url), {
-					method: request.method
-				})
-			);
-			if (rawPath !== '/shell') return shell;
-			// xterm generates dimension/theme styles. Only this document permits them;
-			// the script and connection policies remain unchanged.
-			const response = new Response(shell.body, shell);
-			const policy = response.headers.get('Content-Security-Policy');
-			if (policy)
-				response.headers.set(
-					'Content-Security-Policy',
-					policy
-						.replace(/style-src [^;]*/, "style-src 'self' 'unsafe-inline'")
-						.replace(/style-src-attr [^;]*/, "style-src-attr 'unsafe-inline'")
-				);
-			return response;
-		}
-		return env.ASSETS.fetch(request);
-	}
+	if (!rawPath.startsWith(mirrorPrefix + '/')) return env.ASSETS.fetch(request);
 	const url = new URL(request.url);
 	if (rawPath === cliIndexEndpoint)
 		return cliIndex(request, context, dependencies);
@@ -190,10 +170,7 @@ export async function handleRequest(
 				credentials: 'omit',
 				// CloudFront rejects requests without a User-Agent. Use our own fixed
 				// identifier, never the incoming browser's headers.
-				headers: {
-					'Accept-Encoding': 'identity',
-					'User-Agent': 'mooncakes-playground/0.1'
-				}
+				headers: { 'Accept-Encoding': 'identity', 'User-Agent': userAgent }
 			})
 		);
 		const length = upstream.headers.get('Content-Length');

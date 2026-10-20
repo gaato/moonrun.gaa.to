@@ -1,7 +1,7 @@
 import { downloadPath, mirrorPrefix } from './downloads';
 
 export function digestHex(text: string): string {
-	// Registry archive digests use sha256:hex; checksum files may use sha256sum format.
+	// Digests may be bare or sha256:hex; checksum files may use sha256sum format.
 	const match = /^(?:sha256:)?([a-f0-9]{64})(?:\s+\*?[^\r\n]+)?$/i.exec(
 		text.trim()
 	);
@@ -84,7 +84,7 @@ export async function browserCache(): Promise<Cache | undefined> {
 }
 
 // Immutable prebuilds use their exact URL as identity, with the verified digest
-// stored alongside the bytes. Archives retain URL+digest identity above.
+// stored alongside the bytes. Bundled commands use URL+digest identity above.
 export async function verifiedWasm(
 	url: string,
 	cache?: VerifiedCache,

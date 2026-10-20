@@ -8,7 +8,7 @@ const index = Array.from({ length: 9 }, (_, i) => ({
 it('limits concurrency to six, reports verified byte progress, and waits for every completion', async () => {
 	const pending: (() => void)[] = [];
 	const load = vi.fn(
-		(_path: string) =>
+		(_entry: { name: string }) =>
 			new Promise<Uint8Array>((resolve) =>
 				pending.push(() => resolve(new Uint8Array(10)))
 			)
@@ -40,9 +40,9 @@ it('silently excludes absent executables from commands and progress while report
 	const onProgress = vi.fn();
 	const commands = await preloadCommands(
 		index.slice(0, 3),
-		async (path) => {
-			if (path.includes('cmd0@')) throw new Error('offline');
-			return path.includes('cmd1@') ? undefined : new Uint8Array(12);
+		async ({ name }) => {
+			if (name === 'cli/cmd0') throw new Error('offline');
+			return name === 'cli/cmd1' ? undefined : new Uint8Array(12);
 		},
 		{ onFailure, onProgress }
 	);

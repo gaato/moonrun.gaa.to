@@ -85,7 +85,7 @@ describe('verified Cache API wrapper', () => {
 
 it('keys relative mirror paths by their actual same-origin URL and digest', async () => {
 	vi.stubGlobal('location', {
-		href: 'https://playground.example/a/b@1.0.0/b.wasm'
+		href: 'https://moonrun.example/a/b@1.0.0/b.wasm'
 	});
 	try {
 		const path = '/_mooncakes/prebuild/a/b@1.0.0/b.wasm';
@@ -95,7 +95,7 @@ it('keys relative mirror paths by their actual same-origin URL and digest', asyn
 		expect(await verifiedBytes(path, digest, cache, fetcher)).toEqual(bytes);
 		expect(fetcher).toHaveBeenCalledOnce();
 		expect(new URL(cacheKey(path, digest)).origin).toBe(
-			'https://playground.example'
+			'https://moonrun.example'
 		);
 	} finally {
 		vi.unstubAllGlobals();
@@ -103,8 +103,7 @@ it('keys relative mirror paths by their actual same-origin URL and digest', asyn
 });
 
 describe('immutable wasm cache', () => {
-	const url =
-		'https://playground.test/_mooncakes/prebuild/cli/sh@1.0.0/sh.wasm';
+	const url = 'https://moonrun.test/_mooncakes/prebuild/cli/sh@1.0.0/sh.wasm';
 	function downloader() {
 		return vi.fn<typeof fetch>(async (input) =>
 			String(input).endsWith('.sha256')

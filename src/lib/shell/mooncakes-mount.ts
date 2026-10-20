@@ -12,12 +12,7 @@ import {
 	verifiedWasm,
 	type VerifiedCache
 } from '../integrity';
-import {
-	modulePath,
-	parseModulePath,
-	wasmUrl,
-	type ModulePath
-} from '../paths';
+import { parseModulePath, wasmUrl, type ModulePath } from '../paths';
 import { modulesEndpoint } from '../cli-index';
 
 type ErrorCode = 'ENOENT' | 'EIO' | 'ENOTDIR' | 'EISDIR' | 'EINVAL' | 'EROFS';
@@ -81,7 +76,6 @@ interface Coordinate {
 	module: string;
 	version: string;
 	tail: string[];
-	alias: boolean;
 }
 export interface MooncakesMountOptions {
 	fetcher?: typeof fetch;
@@ -94,7 +88,6 @@ export function createMooncakesMount({
 	cache
 }: MooncakesMountOptions = {}) {
 	let catalogPromise: Promise<Catalog> | undefined;
-	const versions = new Map<string, Promise<Set<string>>>();
 	const archives = new Map<string, Promise<Map<string, Node>>>();
 	let active = 0;
 	const queued: (() => void)[] = [];
@@ -141,36 +134,14 @@ export function createMooncakesMount({
 			return owners;
 		})());
 	}
+	// /<owner>/<module> is the module's latest non-yanked version, decided once per
+	// session by the modules list, matching moonx coordinates such as gaato/kbbi/cmd/kbbi.
 	async function coordinate(parts: string[]): Promise<Coordinate> {
-		const [owner, mod, ...tail] = parts;
-		if (!owner || !mod) throw new FsError('EINVAL');
-		const [module, requested, ...extra] = mod.split('@');
-		const latest = (await catalog()).get(owner)?.get(module);
-		if (!latest || !requested || extra.length || !component.test(module))
-			throw new FsError('ENOENT');
-		const version = requested === 'latest' ? latest : requested;
-		if (!downloadPath(`/user/${owner}/${module}/${version}.zip`))
-			throw new FsError('ENOENT');
-		if (version !== latest) {
-			const key = owner + '/' + module;
-			let pending = versions.get(key);
-			if (!pending) {
-				pending = (async () => {
-					const detail = (await json(
-						`${modulesEndpoint}/${owner}/${module}`
-					)) as { versions?: unknown };
-					if (!Array.isArray(detail.versions)) throw new FsError('EIO');
-					return new Set<string>(
-						detail.versions
-							.filter((v) => !v.yanked && typeof v.version === 'string')
-							.map((v) => v.version)
-					);
-				})();
-				versions.set(key, pending);
-			}
-			if (!(await pending).has(version)) throw new FsError('ENOENT');
-		}
-		return { owner, module, version, tail, alias: requested === 'latest' };
+		const [owner, module, ...tail] = parts;
+		if (!owner || !module) throw new FsError('EINVAL');
+		const version = (await catalog()).get(owner)?.get(module);
+		if (!version || !component.test(module)) throw new FsError('ENOENT');
+		return { owner, module, version, tail };
 	}
 	function archive(c: Coordinate) {
 		const key = `${c.owner}/${c.module}@${c.version}`;
@@ -285,10 +256,7 @@ export function createMooncakesMount({
 					return { kind: 'dir', mode: 0o555 };
 				}
 				const c = await coordinate(parts);
-				if (!c.tail.length)
-					return c.alias
-						? { kind: 'symlink', mode: 0o555 }
-						: { kind: 'dir', mode: 0o555 };
+				if (!c.tail.length) return { kind: 'dir', mode: 0o555 };
 				const node = await lookup(c);
 				return node.kind === 'dir'
 					? { kind: 'dir', mode: 0o555 }
@@ -304,10 +272,9 @@ export function createMooncakesMount({
 				if (parts.length === 1) {
 					const modules = (await catalog()).get(parts[0]);
 					if (!modules) throw new FsError('ENOENT');
-					return [...modules].sort().flatMap(([name, version]) => [
-						{ name: `${name}@${version}`, kind: 'dir' as const },
-						{ name: `${name}@latest`, kind: 'symlink' as const }
-					]);
+					return [...modules.keys()]
+						.sort()
+						.map((name) => ({ name, kind: 'dir' as const }));
 				}
 				const c = await coordinate(parts);
 				const nodes = await archive(c);
@@ -355,12 +322,6 @@ export function createMooncakesMount({
 					}
 				};
 			}),
-		readlink: (path) =>
-			result(async () => {
-				const c = await coordinate(split(path));
-				if (!c.alias || c.tail.length) throw new FsError('EINVAL');
-				return `${c.module}@${c.version}`;
-			}),
 		create: async () => fail('EROFS'),
 		write: async () => fail('EROFS'),
 		truncate: async () => fail('EROFS'),
@@ -368,22 +329,5 @@ export function createMooncakesMount({
 		remove: async () => fail('EROFS'),
 		rename: async () => fail('EROFS')
 	};
-	return Object.assign(provider, {
-		// Only synthesized, checksum-backed executables may run from this mount.
-		readProgram: async (
-			path: string
-		): Promise<{ bytes: Uint8Array; path: string } | undefined> => {
-			try {
-				const node = await lookup(await coordinate(split(path)));
-				return node.kind === 'wasm'
-					? { bytes: await nodeBytes(node), path: modulePath(node.coordinate) }
-					: undefined;
-			} catch (error) {
-				if (error instanceof FsError && error.code === 'ENOENT')
-					return undefined;
-				throw error;
-			}
-		}
-	});
+	return provider;
 }
-export type MooncakesMount = ReturnType<typeof createMooncakesMount>;

@@ -3,6 +3,7 @@ node_modules
 build
 .wrangler
 static/_moonrun
+static/_commands
 static/THIRD_PARTY_NOTICES.txt
 pnpm-lock.yaml
 LICENSE

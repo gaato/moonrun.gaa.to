@@ -115,18 +115,12 @@ importers:
       '@xterm/xterm':
         specifier: ^6.0.0
         version: 6.0.0
-      dompurify:
-        specifier: ^3.4.17
-        version: 3.4.17
       fflate:
         specifier: ^0.8.3
         version: 0.8.3
-      marked:
-        specifier: ^18.1.1
-        version: 18.1.1
       moonrun-js:
-        specifier: ^0.1.1
-        version: 0.1.1
+        specifier: ^0.1.2
+        version: 0.1.2
     devDependencies:
       '@sveltejs/adapter-static':
         specifier: ^3.0.10
@@ -900,9 +894,6 @@ packages:
   '@types/node@24.19.2':
     resolution: {integrity: sha512-93d49wCWJkCyN87MxLpNN6KXPCwFw7bVUg79mGUV1OS40JGWwVCr8n61DXCSqz7CV6/VfPkb7xec7uP2M+QHWQ==}
 
-  '@types/trusted-types@2.0.7':
-    resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
-
   '@vitest/expect@4.1.12':
     resolution: {integrity: sha512-vFlTt+YEu9WBpNjdGayNmlMVzrWPi1+sv853/7t2FU7hpO5gAFBKHzQmkCq5Xjpr+evegF2994LQT3hF3mRlqQ==}
 
@@ -1008,9 +999,6 @@ packages:
 
   devalue@5.9.4:
     resolution: {integrity: sha512-sPAT4pztbu6586/hrhOnMKS17IJrvg12mXiSPSS3W5qDeN2RGgvZ0diZCm31dBbnevfVmujNO3IM2wrS4Y2Rhg==}
-
-  dompurify@3.4.17:
-    resolution: {integrity: sha512-B/pSlYVHQ58kqISD/yDjuJ1yfzI34m1gF4lAod2bwSRhiN4K5Cl3H8Af7hqB2PmTL911tdEudnnXn5FnhRoz0w==}
 
   enhanced-resolve@5.26.0:
     resolution: {integrity: sha512-9vhedylFonb2YGogzUKX6+Ja72gOJbN1QHAqdrvqLwhdl/QWbKopzoUC9EbQNVsAns/bx/4uyqalrQAoy1IByw==}
@@ -1257,11 +1245,6 @@ packages:
   magic-string@1.4.3:
     resolution: {integrity: sha512-z12OxmaPGE0F4xlpGdjuAUckipLpQlTAuAmyGhNoD7ODpYUzvDfvtxUbjM/jwznyP178oju/KDdyi220wNJ0RQ==}
 
-  marked@18.1.1:
-    resolution: {integrity: sha512-zEGgrtUG8crk+TrMacJSVABU4DYDDkS8uqgU3ohrn/2fW9C2AEfUrO3m6IhpIpQpl7YcVpiXXC9cSMWDANT3dg==}
-    engines: {node: '>= 20'}
-    hasBin: true
-
   mdn-data@2.27.1:
     resolution: {integrity: sha512-9Yubnt3e8A0OKwxYSXyhLymGW4sCufcLG6VdiDdUGVkPhpqLxlvP5vl1983gQjJl3tqbrM731mjaZaP68AgosQ==}
 
@@ -1269,8 +1252,8 @@ packages:
     resolution: {integrity: sha512-8Canhy6g9+vAhqMc0o80YphqYIwpiA3aAp8aX+uDXU7J/qbUeoZzcII9c2V1P4uT/eHD4SB93qet1o1bRY3BuQ==}
     engines: {node: '>=22.0.0'}
 
-  moonrun-js@0.1.1:
-    resolution: {integrity: sha512-WSBfhDii698AvO3oXpprsUsq5rVr4ORwZi7Uwu6NvkEilmPx+D9lgMG6FADWQ3XPbbx4ak5ijnw6le3BBKSw/g==}
+  moonrun-js@0.1.2:
+    resolution: {integrity: sha512-dtMHkEWXBWvqhdh9OBbLf8pfAAbmjjhZ02zizKNBW+Lt2U9QkHeWcU0HjiZMjUy5gBDWuiozQvnbiI+Tq5jx8Q==}
     engines: {node: '>=24'}
     hasBin: true
 
@@ -2152,9 +2135,6 @@ snapshots:
     dependencies:
       undici-types: 7.24.6
 
-  '@types/trusted-types@2.0.7':
-    optional: true
-
   '@vitest/expect@4.1.12':
     dependencies:
       '@standard-schema/spec': 1.1.0
@@ -2249,10 +2229,6 @@ snapshots:
   detect-libc@2.1.2: {}
 
   devalue@5.9.4: {}
-
-  dompurify@3.4.17:
-    optionalDependencies:
-      '@types/trusted-types': 2.0.7
 
   enhanced-resolve@5.26.0:
     dependencies:
@@ -2468,8 +2444,6 @@ snapshots:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  marked@18.1.1: {}
-
   mdn-data@2.27.1: {}
 
   miniflare@5.20261012.1-beta(@types/node@24.19.2):
@@ -2485,7 +2459,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  moonrun-js@0.1.1:
+  moonrun-js@0.1.2:
     dependencies:
       '@noble/ciphers': 2.4.0
 

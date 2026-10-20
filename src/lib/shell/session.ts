@@ -1,19 +1,35 @@
 import { mountServer } from './mount-bridge';
-import type { MountProvider, RunOutcome } from 'moonrun-js/browser';
-import type { ShellRequest, ShellReply } from './protocol';
-export function startSession(
-	wasm: Uint8Array,
-	resolveCommand: (
-		name: string,
-		cwd?: string
-	) => Promise<Uint8Array | undefined>,
-	output: (bytes: Uint8Array, prompt?: '$ ' | '> ') => void,
-	mount?: MountProvider
-) {
+import type {
+	BrowserDirectoryHandle,
+	MountProvider,
+	RunOutcome
+} from 'moonrun-js/browser';
+import type { AddedFile, ShellRequest, ShellReply } from './protocol';
+export interface SessionOptions {
+	wasm: Uint8Array;
+	/** Fallback for names the filesystem PATH search does not find. */
+	resolveCommand: (name: string) => Promise<Uint8Array | undefined>;
+	output: (bytes: Uint8Array, prompt?: '$ ' | '> ') => void;
+	/** Called when sh is about to copy added files into /work. */
+	added?: (names: string[]) => void;
+	/** Page-thread providers, bridged into the supervisor Worker. */
+	mounts?: Readonly<Record<string, MountProvider>>;
+	files?: AddedFile[];
+	folder?: BrowserDirectoryHandle;
+}
+export function startSession({
+	wasm,
+	resolveCommand,
+	output,
+	added,
+	mounts = {},
+	files,
+	folder
+}: SessionOptions) {
 	const worker = new Worker(new URL('./shell.worker.ts', import.meta.url), {
 		type: 'module'
 	});
-	const server = mount ? mountServer(mount) : undefined;
+	const server = mountServer(mounts);
 	let id = 0;
 	let closing = false;
 	const writes = new Map<
@@ -30,7 +46,7 @@ export function startSession(
 	function cleanup() {
 		closing = true;
 		worker.terminate();
-		server?.close();
+		server.close();
 		for (const pending of writes.values())
 			pending.reject(new Error('Shell session ended.'));
 		writes.clear();
@@ -43,13 +59,11 @@ export function startSession(
 		}
 		if (closing) return;
 		if (data.type === 'mount') {
-			void (
-				server?.call(data.request) ??
-				Promise.resolve({ ok: false as const, error: { code: 'EIO' as const } })
-			).then((result) => {
+			void server.call(data.mount, data.request).then((result) => {
 				if (!closing) send({ type: 'mounted', id: data.id, result });
 			});
 		} else if (data.type === 'output') output(data.bytes, data.prompt);
+		else if (data.type === 'added') added?.(data.names);
 		else if (data.type === 'written') {
 			const pending = writes.get(data.id);
 			writes.delete(data.id);
@@ -62,7 +76,7 @@ export function startSession(
 			cleanup();
 			fail(new Error(data.message));
 		} else if (data.type === 'resolve') {
-			void resolveCommand(data.name, data.cwd).then(
+			void resolveCommand(data.name).then(
 				(bytes) => {
 					if (!closing) send({ type: 'resolved', id: data.id, wasm: bytes });
 				},
@@ -76,7 +90,13 @@ export function startSession(
 		cleanup();
 		fail(new Error(event.message || 'Shell Worker failed.'));
 	};
-	send({ type: 'start', wasm, ...(mount ? { mount: true } : {}) });
+	send({
+		type: 'start',
+		wasm,
+		mounts: Object.keys(mounts),
+		...(files?.length ? { files } : {}),
+		...(folder ? { folder } : {})
+	});
 	return {
 		finished,
 		write(bytes: Uint8Array): Promise<void> {
@@ -92,6 +112,15 @@ export function startSession(
 		},
 		signal(number: number) {
 			if (!closing) send({ type: 'signal', number });
+		},
+		addFiles(files: AddedFile[]) {
+			if (!closing) send({ type: 'add', files });
+		},
+		mountFolder(handle: BrowserDirectoryHandle) {
+			if (!closing) send({ type: 'folder', handle });
+		},
+		get running() {
+			return !closing;
 		},
 		stop() {
 			if (!closing) {

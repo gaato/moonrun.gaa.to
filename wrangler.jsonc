@@ -1,21 +1,13 @@
 {
 	"$schema": "./node_modules/wrangler/config-schema.json",
-	"name": "mooncakes-playground",
+	"name": "moonrun-gaa-to",
 	"main": "src/worker.ts",
 	"compatibility_date": "2026-10-01",
 	"workers_dev": false,
 	"assets": {
 		"directory": "./build",
 		"binding": "ASSETS",
-		"run_worker_first": [
-			"/_mooncakes/prebuild/*",
-			"/_mooncakes/cli-index",
-			"/_mooncakes/skills/*",
-			"/_mooncakes/user/*",
-			"/*@*",
-			"/*%40*",
-			"/shell"
-		],
+		"run_worker_first": ["/_mooncakes/*"],
 		"html_handling": "none",
 		"not_found_handling": "single-page-application"
 	}

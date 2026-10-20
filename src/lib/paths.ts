@@ -60,32 +60,3 @@ export function wasmUrl(value: ModulePath): string {
 	if (!path) throw new Error('Program download requires a concrete version.');
 	return mirrorPrefix + path;
 }
-
-export function openPath(input: string): string {
-	const value = input.trim();
-	if (/^[a-z]+:/i.test(value) || value.startsWith('//') || /[?#]/.test(value)) {
-		throw new Error('Enter a module path without a host, query or fragment.');
-	}
-	const parsed = parseModulePath(value);
-	if (!parsed) throw new Error('Expected owner/module@version/path/name.wasm.');
-	return modulePath(parsed);
-}
-
-export function queryArgs(search: string): string[] {
-	return new URLSearchParams(search).getAll('arg');
-}
-
-export function withArgs(url: URL, args: string[]): URL {
-	const next = new URL(url);
-	next.searchParams.delete('arg');
-	for (const arg of args) next.searchParams.append('arg', arg);
-	return next;
-}
-
-export function parseArgs(json: string): string[] {
-	const value: unknown = JSON.parse(json);
-	if (!Array.isArray(value) || !value.every((v) => typeof v === 'string')) {
-		throw new Error('Arguments must be a JSON array of strings.');
-	}
-	return value;
-}

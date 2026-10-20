@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import worker from './worker';
 import { handleRequest, maxResponseBytes, type EdgeCache } from './mirror';
+import { userAgent } from './lib/downloads';
 
-const origin = 'https://playground.example';
+const origin = 'https://moonrun.example';
 const wasm = '/_mooncakes/prebuild/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm';
 const checksum = wasm + '.sha256';
-const archive = '/_mooncakes/skills/gaato/kbbi@0.1.6/cmd/kbbi/skills.zip';
 class FakeCache implements EdgeCache {
 	entries = new Map<string, Response>();
 	keys: Request[] = [];
@@ -52,10 +52,8 @@ describe('mirror allowlist', () => {
 	it.each([
 		[wasm, 'application/wasm'],
 		[checksum, 'text/plain; charset=utf-8'],
-		[archive, 'application/zip'],
 		['/_mooncakes/user/gaato/kbbi/0.1.6.zip', 'application/zip'],
 		['/_mooncakes/prebuild/cli/sh@0.2.1/sh.wasm', 'application/wasm'],
-		['/_mooncakes/skills/cli/sh@0.2.1/skills.zip', 'application/zip'],
 		['/_mooncakes/prebuild/a/b@1.2.3-rc.1%2Bbuild.2/b.wasm', 'application/wasm']
 	])('serves %s with a controlled content type', async (path, contentType) => {
 		const s = setup();
@@ -85,7 +83,7 @@ describe('mirror allowlist', () => {
 		'/_mooncakes/prebuild/a/b@1.0.0/b.js',
 		'/_mooncakes/prebuild/a/b@1.0.0/skills.zip',
 		'/_mooncakes/skills/a/b@1.0.0/b.wasm',
-		'/_mooncakes/skills/a/b@1.0.0/other.zip',
+		'/_mooncakes/skills/a/b@1.0.0/skills.zip',
 		'/_mooncakes/prebuild/a/b@1.0.0//b.wasm',
 		'/_mooncakes/prebuild/a/b@1.0.0/%2fetc.wasm',
 		'/_mooncakes/prebuild/a/b@1.0.0/a%5Cb.wasm',
@@ -162,7 +160,7 @@ it('strips all client headers and controls response headers independently of ups
 	const upstream = s.fetcher.mock.calls[0][0] as Request;
 	expect([...upstream.headers]).toEqual([
 		['accept-encoding', 'identity'],
-		['user-agent', 'mooncakes-playground/0.1']
+		['user-agent', userAgent]
 	]);
 	expect(upstream.method).toBe('GET');
 	expect(upstream.credentials).toBe('omit');
@@ -338,40 +336,16 @@ it('serves downloads when cache reads or writes fail', async () => {
 	expect(fetcher).toHaveBeenCalledOnce();
 });
 
-it.each([
-	'/cli/sh@0.2.1/sh.wasm',
-	'/cli/sh@latest/sh.wasm',
-	'/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm',
-	'/cli/sh%400.2.1/sh.wasm'
-])('serves %s through index.html without canonical redirects', async (path) => {
-	const s = setup();
-	expect((await s.run(path)).status).toBe(200);
-	const request = s.assets.fetch.mock.calls[0][0] as Request;
-	expect(new URL(request.url).pathname).toBe('/index.html');
-	expect(s.fetcher).not.toHaveBeenCalled();
-});
-it('permits xterm generated styles only on the shell document', async () => {
-	const strict =
-		"script-src 'self'; style-src 'self'; style-src-attr 'none'; connect-src 'self' https://mooncakes.io";
-	const assets = {
-		fetch: vi.fn(
-			async (_request: Request) =>
-				new Response('SPA', { headers: { 'Content-Security-Policy': strict } })
-		)
-	};
-	const s = setup();
-	const response = await handleRequest(
-		new Request(origin + '/shell'),
-		{ ASSETS: assets },
-		{ waitUntil() {} },
-		{ cache: s.cache, fetcher: s.fetcher }
-	);
-	expect(response.headers.get('Content-Security-Policy')).toBe(
-		strict
-			.replace("style-src 'self'", "style-src 'self' 'unsafe-inline'")
-			.replace("style-src-attr 'none'", "style-src-attr 'unsafe-inline'")
-	);
-});
+it.each(['/', '/shell', '/cli/sh@0.2.1/sh.wasm', '/_commands/sh.wasm'])(
+	'passes %s to static assets unchanged',
+	async (path) => {
+		const s = setup();
+		expect(await (await s.run(path)).text()).toBe('SPA');
+		const request = s.assets.fetch.mock.calls[0][0] as Request;
+		expect(request.url).toBe(origin + path);
+		expect(s.fetcher).not.toHaveBeenCalled();
+	}
+);
 
 describe('CLI version index', () => {
 	const path = '/_mooncakes/cli-index';
@@ -408,7 +382,7 @@ describe('CLI version index', () => {
 		expect(upstream.credentials).toBe('omit');
 		expect([...upstream.headers]).toEqual([
 			['accept-encoding', 'identity'],
-			['user-agent', 'mooncakes-playground/0.1']
+			['user-agent', userAgent]
 		]);
 		expect(s.cache.keys[0].url).toBe(origin + path);
 		expect([...s.cache.keys[0].headers]).toEqual([]);

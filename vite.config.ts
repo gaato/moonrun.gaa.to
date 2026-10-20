@@ -22,7 +22,7 @@ export default defineConfig({
 	worker: { format: 'es', plugins: () => [moonrun] },
 	test: {
 		environment: 'node',
-		include: ['src/**/*.test.ts'],
+		include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
 		expect: { requireAssertions: true }
 	}
 });

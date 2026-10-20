@@ -52,16 +52,16 @@ for (const name of [
 	);
 }
 const assets = await readdir(resolve(root, '_app/immutable/workers'));
-const supervisor = assets.find(
-	(name) => name.startsWith('runner.worker-') && name.endsWith('.js')
+const shellWorker = assets.find(
+	(name) => name.startsWith('shell.worker-') && name.endsWith('.js')
 );
-assert.ok(supervisor, 'Missing app supervisor Worker');
+assert.ok(shellWorker, 'Missing shell supervisor Worker');
 const entry = await readFile(
-	resolve(root, '_app/immutable/workers', supervisor),
+	resolve(root, '_app/immutable/workers', shellWorker),
 	'utf8'
 );
 assert.match(entry, /["']\/_moonrun\/index\.js["']/);
-await visit(resolve(root, '_app/immutable/workers', supervisor));
+await visit(resolve(root, '_app/immutable/workers', shellWorker));
 assert.ok(
 	(await readFile(resolve(root, 'index.html'), 'utf8')).includes('/_app/')
 );
@@ -69,40 +69,39 @@ const headers = await readFile(resolve(root, '_headers'), 'utf8');
 assert.match(headers, /wasm-unsafe-eval/);
 assert.match(headers, /worker-src 'self'/);
 assert.match(headers, /connect-src 'self' https:\/\/mooncakes\.io;/);
+assert.match(headers, /style-src 'self' 'unsafe-inline';/);
+assert.match(headers, /style-src-attr 'unsafe-inline';/);
+assert.match(
+	await readFile(resolve(root, '_redirects'), 'utf8'),
+	/^\/shell \/ 301$/m
+);
 
-for (const source of [
-	await readFile(resolve(root, 'index.html'), 'utf8'),
-	await readFile('.svelte-kit/generated/root.svelte', 'utf8')
-]) {
-	for (const [, style] of source.matchAll(/\bstyle="([^"]*)"/g)) {
-		const hash = createHash('sha256').update(style).digest('base64');
-		assert.ok(
-			headers.includes(`'sha256-${hash}'`),
-			'Inline/runtime style missing from CSP'
-		);
-	}
+// Bundled commands: every indexed file exists with its size and digest.
+const commands = JSON.parse(
+	await readFile(resolve(root, '_commands/index.json'), 'utf8')
+) as { name: string; version: string; sha256: string; size: number }[];
+assert.ok(commands.some((command) => command.name === 'cli/sh'));
+for (const command of commands) {
+	const bytes = await readFile(
+		resolve(root, '_commands', command.name.slice(4) + '.wasm')
+	);
+	assert.equal(bytes.length, command.size, `Size mismatch: ${command.name}`);
+	assert.equal(
+		createHash('sha256').update(bytes).digest('hex'),
+		command.sha256,
+		`SHA-256 mismatch: ${command.name}`
+	);
+	assert.deepEqual(bytes.subarray(0, 4), Buffer.from([0, 97, 115, 109]));
 }
 
 const config = JSON.parse(await readFile('wrangler.jsonc', 'utf8'));
 assert.equal(config.main, 'src/worker.ts');
 assert.equal(config.assets.binding, 'ASSETS');
 assert.equal(config.assets.not_found_handling, 'single-page-application');
-assert.deepEqual(config.assets.run_worker_first, [
-	'/_mooncakes/prebuild/*',
-	'/_mooncakes/cli-index',
-	'/_mooncakes/skills/*',
-	'/_mooncakes/user/*',
-	'/*@*',
-	'/*%40*',
-	'/shell'
-]);
-
-const shellWorker = assets.find(
-	(name) => name.startsWith('shell.worker-') && name.endsWith('.js')
-);
-assert.ok(shellWorker, 'Missing shell supervisor Worker');
-await visit(resolve(root, '_app/immutable/workers', shellWorker));
+assert.equal(config.name, 'moonrun-gaa-to');
+assert.equal(config.workers_dev, false);
+assert.deepEqual(config.assets.run_worker_first, ['/_mooncakes/*']);
 
 console.log(
-	`Verified ${visited.size} runtime assets, both supervisor imports, SPA entry and security headers.`
+	`Verified ${visited.size} runtime assets, the shell supervisor import, ${commands.length} bundled commands, SPA entry and security headers.`
 );

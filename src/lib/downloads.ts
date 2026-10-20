@@ -1,5 +1,7 @@
 export const mirrorPrefix = '/_mooncakes';
 export const downloadOrigin = 'https://download.mooncakes.io';
+// CloudFront rejects requests without a User-Agent; never forward the browser's.
+export const userAgent = 'moonrun.gaa.to/0.1 (+https://moonrun.gaa.to)';
 const segment = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
 const number = '(?:0|[1-9][0-9]*)';
 const concreteVersion = new RegExp(
@@ -34,7 +36,7 @@ export function downloadPath(pathname: string): string | null {
 			return null;
 		return '/' + parts.map(encodeURIComponent).join('/');
 	}
-	if (kind !== 'prebuild' && kind !== 'skills') return null;
+	if (kind !== 'prebuild') return null;
 	const [module, version, ...extra] = coordinate.split('@');
 	if (
 		!segment.test(module) ||
@@ -45,13 +47,7 @@ export function downloadPath(pathname: string): string | null {
 		!tail.every((part) => segment.test(part))
 	)
 		return null;
-	const filename = tail.at(-1)!;
-	if (
-		kind === 'skills'
-			? filename !== 'skills.zip'
-			: !/^.+\.wasm(?:\.sha256)?$/.test(filename)
-	)
-		return null;
+	if (!/^.+\.wasm(?:\.sha256)?$/.test(tail.at(-1)!)) return null;
 	return (
 		'/' +
 		parts

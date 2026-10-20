@@ -24,12 +24,14 @@ function provider() {
 	};
 	return { mount, close };
 }
-it('bridges metadata, symlinks and private ranged readers, with no write capability', async () => {
+it('bridges metadata, symlinks and private ranged readers per mount, with no write capability', async () => {
 	const r = provider();
-	const server = mountServer(r.mount);
-	const proxy = mountProxy((id, request) => {
-		void server.call(request).then((value) => proxy.accept(id, value));
+	const other = provider();
+	const server = mountServer({ '/a': r.mount, '/b': other.mount });
+	const bridge = mountProxy((id, mount, request) => {
+		void server.call(mount, request).then((value) => bridge.accept(id, value));
 	});
+	const proxy = { provider: bridge.provider('/a') };
 	expect(await proxy.provider.stat('/file')).toEqual({
 		ok: true,
 		value: { kind: 'file', size: 3 }
@@ -53,21 +55,28 @@ it('bridges metadata, symlinks and private ranged readers, with no write capabil
 	await vi.waitFor(() => expect(r.close).toHaveBeenCalledOnce());
 	expect(proxy.provider.write).toBeUndefined();
 	expect(
-		await server.call({ op: 'read', handle: 1, offset: 0, length: 1 })
+		await server.call('/a', { op: 'read', handle: 1, offset: 0, length: 1 })
 	).toMatchObject({ ok: false, error: { code: 'EBADF' } });
+	expect(other.close).not.toHaveBeenCalled();
+	expect(
+		await server.call('/missing', { op: 'stat', path: '/' })
+	).toMatchObject({ ok: false, error: { code: 'EINVAL' } });
+	expect(
+		await server.call('toString', { op: 'stat', path: '/' })
+	).toMatchObject({ ok: false, error: { code: 'EINVAL' } });
 });
 it('releases outstanding and late readers at session end', async () => {
 	const r = provider();
-	const server = mountServer(r.mount);
-	await server.call({ op: 'open', path: '/file' });
+	const server = mountServer({ '/m': r.mount });
+	await server.call('/m', { op: 'open', path: '/file' });
 	server.close();
 	expect(r.close).toHaveBeenCalledOnce();
-	expect(await server.call({ op: 'stat', path: '/file' })).toMatchObject({
+	expect(await server.call('/m', { op: 'stat', path: '/file' })).toMatchObject({
 		ok: false,
 		error: { code: 'EIO' }
 	});
-	const late = mountServer(r.mount);
-	const opening = late.call({ op: 'open', path: '/file' });
+	const late = mountServer({ '/m': r.mount });
+	const opening = late.call('/m', { op: 'open', path: '/file' });
 	late.close();
 	expect(await opening).toMatchObject({ ok: false, error: { code: 'EIO' } });
 	expect(r.close).toHaveBeenCalledTimes(2);

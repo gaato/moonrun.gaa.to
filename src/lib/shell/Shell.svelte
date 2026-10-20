@@ -1,38 +1,51 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { Terminal } from '@xterm/xterm';
+	import type { BrowserDirectoryHandle } from 'moonrun-js/browser';
 	import '@xterm/xterm/css/xterm.css';
-	import { createResolver, skillCommands } from './resolver';
-	import { cliProgramPath, fetchCliIndex, type CliModule } from '../cli-index';
+	import { createResolver } from './resolver';
+	import { fetchCommandIndex, type CliModule } from '../cli-index';
 	import { LineDiscipline } from './line-discipline';
 	import { createMooncakesMount } from './mooncakes-mount';
-	import { shellHint } from './work';
+	import { createBinMount } from './bin-mount';
+	import { createCommandLoader } from './commands';
+	import { preloadCommands } from './preload';
+	import { binMount, mooncakesMount, shellHint, shellPath } from './work';
 	import { startSession } from './session';
+	import { shareLink, sharedCommand } from './share';
+	import type { AddedFile } from './protocol';
 	import { fetchSkills, type Skill } from '../skills';
-	import { exitStatus } from '../execution';
+	import { exitStatus, workFilename } from '../execution';
 
+	const maxFileBytes = 64 * 1024 * 1024;
 	let container: HTMLDivElement;
+	let filePicker: HTMLInputElement;
 	let terminal: Terminal | undefined;
 	let session: ReturnType<typeof startSession> | undefined;
 	let discipline: LineDiscipline | undefined;
 	let alive = true;
 	let controller: AbortController | undefined;
-	let skills = $state<Skill[]>([]);
-	const availableSkills = $derived(skillCommands(skills));
 	let status = $state('Starting shell…');
 	let active = $state(false);
 	let loading = $state(true);
 	let warning = $state('');
 	let command = $state('');
-	let commandList: HTMLDetailsElement;
+	let copied = $state('');
+	let dragging = $state(false);
+	let canOpenFolder = $state(false);
 	let indexPromise: Promise<CliModule[]> | undefined;
 	const pageController = new AbortController();
-	let cliIndex = $state<CliModule[]>([]);
-	let preloadIssues = $state<Record<string, string>>({});
-	let resolved = $state<{ name: string; path: string }[]>([]);
+	// Survive restarts: files added while no shell runs, and the opened folder.
+	let pendingFiles: AddedFile[] = [];
+	let folder: BrowserDirectoryHandle | undefined;
+	let prefill = '';
+	// Terminal bookkeeping for lines the page prints between sh prompts.
+	let prompt = '$ ';
+	let atPrompt = false;
+	let redrawLine = false;
 
 	function loadIndex() {
-		return (indexPromise ??= fetchCliIndex(pageController.signal).catch(
+		return (indexPromise ??= fetchCommandIndex(pageController.signal).catch(
 			(error) => {
 				indexPromise = undefined;
 				throw error;
@@ -40,6 +53,8 @@
 		));
 	}
 	onMount(() => {
+		prefill = sharedCommand(location.search);
+		canOpenFolder = 'showDirectoryPicker' in window;
 		let dispose = () => {};
 		void (async () => {
 			const [{ Terminal }, { FitAddon }] = await Promise.all([
@@ -92,6 +107,14 @@
 			dispose();
 		};
 	});
+	// One line between prompts; at an idle prompt, redraw the prompt and input.
+	function notice(text: string) {
+		terminal?.write(
+			atPrompt
+				? `\r\x1b[2K${text}\r\n${prompt}${discipline?.line ?? ''}`
+				: `\r\n${text}\r\n`
+		);
+	}
 	async function start() {
 		controller?.abort();
 		session?.stop();
@@ -99,80 +122,100 @@
 		active = false;
 		loading = true;
 		warning = '';
-		resolved = [];
-		preloadIssues = {};
-		cliIndex = [];
-		status = 'Loading command index and verified shell…';
+		atPrompt = false;
+		redrawLine = false;
+		status = 'Loading commands…';
 		terminal?.reset();
 		terminal?.write(status);
 		try {
-			const [index, registry] = await Promise.all([
+			const [index, skills] = await Promise.all([
 				loadIndex(),
 				fetchSkills(abort.signal).catch(() => {
 					if (!abort.signal.aborted)
 						warning =
-							'Skills could not be loaded. CLI commands are still available.';
+							'Skills could not be loaded. The cli/* commands are still available.';
 					return [] as Skill[];
 				})
 			]);
 			if (!alive || abort.signal.aborted) return;
-			skills = registry;
-			const mount = createMooncakesMount({ signal: abort.signal });
-			const resolver = createResolver(skills, {
-				mount,
-				index,
-				signal: abort.signal,
-				onResolved: (name, path) => {
-					if (alive && !abort.signal.aborted)
-						resolved = [...resolved, { name, path }];
-				}
-			});
-			const wasm = await resolver('sh');
-			if (!wasm)
-				throw new Error('No prebuilt cli/sh or sh skill is available.');
+			const load = createCommandLoader({ signal: abort.signal });
+			const sh = index.find((entry) => entry.name === 'cli/sh');
+			const wasm = sh && (await load(sh));
+			if (!sh || !wasm) throw new Error('No prebuilt cli/sh is available.');
 			if (!alive || abort.signal.aborted) return;
-			const commands = await resolver.preload({
+			const commands = await preloadCommands(index, load, {
+				signal: abort.signal,
 				onProgress: ({ completed, total, bytes }) => {
 					if (!alive || abort.signal.aborted) return;
-					status = `Downloading commands ${completed}/${total} (${(bytes / 1024 / 1024).toFixed(1)} MiB ready)`;
+					status = `Loading commands ${completed}/${total} (${(bytes / 1024 / 1024).toFixed(1)} MiB ready)`;
 					terminal?.write('\r\x1b[2K' + status);
 				},
-				onFailure: (entry, error) => {
+				onFailure: (entry) => {
 					if (!alive || abort.signal.aborted) return;
-					preloadIssues = { ...preloadIssues, [entry.name]: String(error) };
 					terminal?.write(
 						`\r\x1b[2K${entry.name}: unavailable; will retry when used.\r\n`
 					);
 				}
 			});
 			if (!alive || abort.signal.aborted) return;
-			cliIndex = commands;
-			terminal?.write('\r\n' + shellHint + '\r\n');
-			let prompt = '$ ';
-			const running = (session = startSession(
+			const resolver = createResolver(skills, { signal: abort.signal });
+			const files = pendingFiles;
+			pendingFiles = [];
+			terminal?.write('\r\x1b[2K' + shellHint + '\r\n');
+			if (files.length)
+				terminal?.write(
+					`Added ${files.map((file) => file.name).join(', ')} to /work.\r\n`
+				);
+			if (folder)
+				terminal?.write(`Mounted folder "${folder.name}" at /mnt/local.\r\n`);
+			const running = (session = startSession({
 				wasm,
-				async (name, cwd) => {
+				resolveCommand: async (name) => {
 					try {
-						return await resolver(name, cwd);
+						return await resolver(name);
 					} catch (error) {
 						if (!abort.signal.aborted)
-							status = `Could not resolve ${name}: ${String(error)}`;
+							status = `Could not load ${name}: ${String(error)}`;
 						throw error;
 					}
 				},
-				(bytes, currentPrompt) => {
-					if (currentPrompt) prompt = currentPrompt;
+				output: (bytes, currentPrompt) => {
 					terminal?.write(bytes);
+					if (!currentPrompt) return;
+					prompt = currentPrompt;
+					atPrompt = true;
+					if (redrawLine) {
+						redrawLine = false;
+						terminal?.write(discipline?.line ?? '');
+					}
+					if (prefill && currentPrompt === '$ ') {
+						discipline?.input(prefill);
+						prefill = '';
+					}
 				},
-				mount
-			));
+				added: (names) => {
+					// sh prompts again after copying; the input line is redrawn then.
+					terminal?.write(`\r\x1b[2KAdded ${names.join(', ')} to /work.\r\n`);
+					atPrompt = false;
+					redrawLine = true;
+				},
+				mounts: {
+					[binMount]: createBinMount(commands, load),
+					[mooncakesMount]: createMooncakesMount({ signal: abort.signal })
+				},
+				files,
+				folder
+			}));
 			discipline = new LineDiscipline({
 				echo: (text) => terminal?.write(text),
 				clear: (line) =>
 					terminal?.write(
 						'\x1b[2J\x1b[H' + (line === undefined ? '' : prompt + line)
 					),
-				write: (bytes) => running.write(bytes),
+				write: (bytes) => {
+					atPrompt = false;
+					return running.write(bytes);
+				},
 				signal: (number) => running.signal(number),
 				end: () => running.end(),
 				error: (error) => {
@@ -181,7 +224,7 @@
 			});
 			active = true;
 			loading = false;
-			status = `${resolved.find((item) => item.name === 'sh')!.path} · /work`;
+			status = `cli/sh@${sh.version} · PATH=${shellPath}`;
 			terminal?.focus();
 			const outcome = await running.finished;
 			if (!alive || abort.signal.aborted) return;
@@ -207,26 +250,100 @@
 		command = '';
 		terminal?.focus();
 	}
+	async function addFiles(list: Iterable<File>) {
+		const files: AddedFile[] = [];
+		for (const file of list) {
+			try {
+				workFilename(file.name);
+				if (file.size > maxFileBytes)
+					throw new Error(`${file.name} is larger than 64 MiB.`);
+				files.push({
+					name: file.name,
+					bytes: new Uint8Array(await file.arrayBuffer())
+				});
+			} catch (error) {
+				notice(error instanceof Error ? error.message : String(error));
+			}
+		}
+		if (!files.length) return;
+		if (active && session) session.addFiles(files);
+		else {
+			pendingFiles.push(...files);
+			notice(
+				`${files.map((file) => file.name).join(', ')} will be in /work when the shell starts.`
+			);
+		}
+		terminal?.focus();
+	}
+	async function openFolder() {
+		try {
+			const picker = window as unknown as {
+				showDirectoryPicker(options: {
+					mode: 'readwrite';
+				}): Promise<BrowserDirectoryHandle>;
+			};
+			const handle = await picker.showDirectoryPicker({ mode: 'readwrite' });
+			folder = handle;
+			if (active) session?.mountFolder(handle);
+			notice(
+				`Mounted folder "${handle.name}" at /mnt/local (read-write). It stays on this device.`
+			);
+			terminal?.focus();
+		} catch (error) {
+			if ((error as { name?: string })?.name !== 'AbortError')
+				status = String(error);
+		}
+	}
+	async function copyLink() {
+		const link = shareLink(location.origin, command || discipline?.line || '');
+		try {
+			await navigator.clipboard.writeText(link);
+			copied = 'Link copied.';
+		} catch {
+			copied = link;
+		}
+	}
 </script>
 
-<h1>Shell</h1>
-<p class="mb-3 text-sm">
-	Run <a
-		class="link"
-		href="#commands"
-		onclick={() => {
-			commandList.open = true;
-		}}>CLI commands and published skills</a
-	> locally in your browser. Network access is unavailable.
+<h1>moonrun.gaa.to</h1>
+<p class="mb-3 max-w-3xl leading-relaxed">
+	<a class="link" href="https://github.com/gaato/moonrun-js">moonrun-js</a>
+	runs MoonBit wasm in your browser. This shell is cli/sh with the cli/* commands
+	from
+	<a class="link" href="https://github.com/moonbit-community/cmd"
+		>moonbit-community/cmd</a
+	>, compiled to wasm and published on mooncakes.io. Everything runs locally,
+	without network access; /mooncakes has the published modules, read-only.
+	Unofficial, not affiliated with the MoonBit team.
 </p>
 <p class="mb-4 text-sm">
-	Enter sends a line · Backspace edits · Ctrl+L redraws · clear clears locally ·
-	Ctrl+C interrupts (may exit sh) · Ctrl+D on an empty line ends input. Files in
-	/work last for this session.
+	Add files or drop them on the terminal to copy them into /work{#if canOpenFolder},
+		or open a folder at /mnt/local{/if}. Your files stay in this browser. Enter
+	sends a line · Ctrl+L redraws · Ctrl+C interrupts (may exit sh) · Ctrl+D on an
+	empty line ends input.
 </p>
 <div
+	role="region"
+	aria-label="Terminal; drop files here to add them to /work"
 	class="shell-terminal rounded-lg bg-[#101318] p-3"
+	class:outline-dashed={dragging}
+	class:outline-2={dragging}
+	class:outline-primary={dragging}
 	bind:this={container}
+	ondragover={(event) => {
+		if (!event.dataTransfer?.types.includes('Files')) return;
+		event.preventDefault();
+		dragging = true;
+	}}
+	ondragleave={() => {
+		dragging = false;
+	}}
+	ondrop={(event) => {
+		dragging = false;
+		if (!event.dataTransfer?.files.length) return;
+		event.preventDefault();
+		void addFiles(event.dataTransfer.files);
+	}}
 ></div>
 <form onsubmit={submit} class="my-3 flex flex-wrap items-center gap-2">
 	<label for="shell-command">Command</label>
@@ -239,66 +356,39 @@
 		spellcheck="false"
 	/>
 	<button class="btn" type="submit" disabled={!active}>Send</button>
+	<button class="btn" type="button" onclick={() => void copyLink()}
+		>Copy link</button
+	>
 </form>
-<div class="my-4 flex flex-wrap items-center gap-3">
-	<p role="status">{status}</p>
+<div class="my-3 flex flex-wrap items-center gap-2">
+	<input
+		type="file"
+		multiple
+		class="hidden"
+		bind:this={filePicker}
+		onchange={() => {
+			if (filePicker.files) void addFiles([...filePicker.files]);
+			filePicker.value = '';
+		}}
+	/>
+	<button type="button" class="btn" onclick={() => filePicker.click()}
+		>Add files</button
+	>
+	{#if canOpenFolder}<button
+			type="button"
+			class="btn"
+			onclick={() => void openFolder()}>Open folder</button
+		>{/if}
 	<button
 		type="button"
 		class="btn"
 		disabled={loading}
 		onclick={() => void start()}>Restart shell</button
 	>
+	{#if copied}<span role="status" class="text-sm break-all">{copied}</span>{/if}
 </div>
+<p role="status" class="my-3 text-sm">{status}</p>
 {#if warning}<p role="note" class="my-3">{warning}</p>{/if}
-<details id="commands" class="mt-8" bind:this={commandList}>
-	<summary class="cursor-pointer font-semibold">Available commands</summary>
-	<p class="my-3 text-sm">
-		CLI modules are downloaded before the prompt appears, using this page’s
-		version index. Missing names try the module API, then skills in full-path
-		order. Skills download on demand; results stay fixed until restart. Use
-		owner/module@version/path/name.wasm for an explicit version, or @latest.
-		Unknown names return command-not-found. All skill alternatives work by full
-		path.
-	</p>
-	{#if resolved.length}
-		<h2>Resolved this session</h2>
-		<ul class="my-3 text-xs">
-			{#each resolved as item}<li class="break-all">
-					<code
-						>{item.name} →
-						<a class="link" href={item.path}>{item.path}</a></code
-					>
-				</li>{/each}
-		</ul>
-	{/if}
-	<h2>CLI commands</h2>
-	<p class="my-3 text-sm">
-		Modules without prebuilt executables are skipped. Failed downloads retry on
-		use. Reload this page to refresh the version index (cached at the edge for
-		10 minutes).
-	</p>
-	<ul class="my-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-		{#each cliIndex as entry}<li>
-				<a class="link font-mono text-sm" href={cliProgramPath(entry)}
-					>{entry.name.slice(4)}</a
-				>
-				<span class="text-xs">{entry.version}</span>
-				{#if preloadIssues[entry.name]}<span class="block text-xs"
-						>Unavailable during preload</span
-					>{/if}
-			</li>{/each}
-	</ul>
-	{#if skills.length}<h2>Skills</h2>
-		<ul>
-			{#each availableSkills as entry}<li>
-					<a class="link" href={entry.path}>{entry.name}</a>
-					{#if entry.aliases.length}<span class="text-sm">
-							(alias: {entry.aliases.join(', ')})</span
-						>{/if}
-					<code class="block font-mono text-xs break-all">{entry.path}</code>
-				</li>{/each}
-		</ul>{/if}
-</details>
 
 <style>
 	.shell-terminal {

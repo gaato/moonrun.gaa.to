@@ -1,5 +1,5 @@
 {
-	"name": "mooncakes-playground",
+	"name": "moonrun-gaa-to",
 	"version": "0.1.0",
 	"private": true,
 	"type": "module",
@@ -11,9 +11,11 @@
 	},
 	"scripts": {
 		"dev": "node scripts/prepare-moonrun.ts && vite dev",
-		"build": "node scripts/prepare-moonrun.ts && vite build && node scripts/write-security-headers.ts && node scripts/check-artifacts.ts",
+		"build": "node scripts/prepare-moonrun.ts && node scripts/prepare-commands.ts && vite build && node scripts/write-security-headers.ts && node scripts/check-artifacts.ts",
+		"prepare:commands": "node scripts/prepare-commands.ts",
 		"preview": "vite preview",
 		"smoke": "node scripts/smoke-worker.ts",
+		"deploy": "wrangler deploy",
 		"prepare": "svelte-kit sync",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"lint": "prettier --check .",
@@ -24,10 +26,8 @@
 	"dependencies": {
 		"@xterm/addon-fit": "^0.11.0",
 		"@xterm/xterm": "^6.0.0",
-		"dompurify": "^3.4.17",
 		"fflate": "^0.8.3",
-		"marked": "^18.1.1",
-		"moonrun-js": "^0.1.1"
+		"moonrun-js": "^0.1.2"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-static": "^3.0.10",

@@ -1,16 +1,4 @@
-import type { RunOutcome, BrowserFiles } from 'moonrun-js/browser';
-export interface RunRequest {
-	wasm: Uint8Array;
-	name: string;
-	args: string[];
-	stdin: Uint8Array;
-	files: BrowserFiles;
-}
-export type WorkerReply =
-	| { type: 'stdout' | 'stderr'; bytes: Uint8Array }
-	| { type: 'outcome'; outcome: RunOutcome }
-	| { type: 'error'; message: string }
-	| { type: 'stopped' };
+import type { RunOutcome } from 'moonrun-js/browser';
 
 export function exitStatus(outcome: RunOutcome): string {
 	switch (outcome.kind) {
@@ -26,14 +14,10 @@ export function exitStatus(outcome: RunOutcome): string {
 			return '1';
 	}
 }
-export function needsNetwork(diagnostic: string): boolean {
-	return /network|socket|\b(?:tcp|udp|dns|ENOSYS|ENETUNREACH|EHOSTUNREACH)\b|Function not implemented|@(?:http|net)[./]/i.test(
-		diagnostic
-	);
-}
+// Added files keep their own name in /work; it must be one plain, printable component.
 export function workFilename(name: string): string {
-	if (!name || /[\\/\0]/.test(name) || name === '.' || name === '..') {
-		throw new Error('Files must have plain filenames.');
+	if (!name || /[\\/\0-\x1f\x7f]/.test(name) || name === '.' || name === '..') {
+		throw new Error(`${JSON.stringify(name)} is not a plain filename.`);
 	}
 	return `/work/${name}`;
 }

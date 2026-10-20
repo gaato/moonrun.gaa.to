@@ -1,4 +1,4 @@
-import { cliProgramPath, type CliModule } from '../cli-index';
+import type { CliModule } from '../cli-index';
 
 export interface PreloadProgress {
 	completed: number;
@@ -14,7 +14,7 @@ export interface PreloadOptions {
 // Resolves only after every job settles; callers must await this before starting sh.
 export async function preloadCommands(
 	index: readonly CliModule[],
-	load: (path: string) => Promise<Uint8Array | undefined>,
+	load: (entry: CliModule) => Promise<Uint8Array | undefined>,
 	{ signal, onProgress, onFailure }: PreloadOptions = {}
 ): Promise<CliModule[]> {
 	let next = 0;
@@ -29,7 +29,7 @@ export async function preloadCommands(
 			signal?.throwIfAborted();
 			const entry = index[next++];
 			try {
-				const wasm = await load(cliProgramPath(entry));
+				const wasm = await load(entry);
 				signal?.throwIfAborted();
 				if (!wasm) {
 					notCommands.add(entry);

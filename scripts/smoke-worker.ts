@@ -150,38 +150,47 @@ try {
 	}
 	assert.ok(ready, 'Wrangler did not become ready within 30 seconds.');
 	const program = '/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm';
-	for (const path of [
-		'/cli/sh@0.2.1/sh.wasm',
-		'/cli/sh@latest/sh.wasm',
-		program
-	]) {
-		const name =
-			path === program
-				? 'spa-nested'
-				: path.includes('@latest')
-					? 'spa-latest'
-					: 'spa-module';
+	const html = await readFile(join(root, 'build/index.html'));
+	for (const path of ['/', '/some/other/path', '/?cmd=ls%20%2Fbin']) {
+		const name = 'spa-' + path.replace(/[^a-z]+/g, '-');
 		const spa = await curl(name, path);
-		assert.equal(
-			spa.status,
-			200,
-			'Module paths must serve the SPA without redirecting.'
-		);
+		assert.equal(spa.status, 200, `${path} must serve the shell.`);
 		assert.match(spa.contentType, /^text\/html\b/);
+		assert.deepEqual(spa.body, html);
 		const headers = await readFile(join(directory, name + '.headers'), 'utf8');
-		assert.doesNotMatch(headers, /^location:/im);
-		assert.deepEqual(spa.body, await readFile(join(root, 'build/index.html')));
-		console.log(`PASS ${path}: 200 SPA, no Location header`);
+		assert.match(headers, /style-src 'self' 'unsafe-inline';/);
+		assert.match(headers, /connect-src 'self' https:\/\/mooncakes.io;/);
+		assert.doesNotMatch(headers, /script-src[^;]*'unsafe-inline'/);
+		console.log(
+			`PASS ${path}: 200 shell, xterm styles permitted, script CSP retained`
+		);
 	}
-
 	const shell = await curl('shell', '/shell');
-	assert.equal(shell.status, 200);
-	const shellHeaders = await readFile(join(directory, 'shell.headers'), 'utf8');
-	assert.match(shellHeaders, /style-src 'self' 'unsafe-inline';/);
-	assert.match(shellHeaders, /connect-src 'self' https:\/\/mooncakes.io;/);
-	assert.doesNotMatch(shellHeaders, /script-src[^;]*'unsafe-inline'/);
+	assert.equal(shell.status, 301);
+	assert.match(
+		await readFile(join(directory, 'shell.headers'), 'utf8'),
+		/^location: \/\r?$/im
+	);
+	console.log('PASS /shell: 301 to /');
+
+	const bundle = await curl('bundle-index', '/_commands/index.json');
+	assert.equal(bundle.status, 200, 'Bundle index failed.');
+	const bundled = JSON.parse(bundle.body.toString()) as {
+		name: string;
+		sha256: string;
+		size: number;
+	}[];
+	const sh = bundled.find((entry) => entry.name === 'cli/sh');
+	assert.ok(sh, 'cli/sh is not bundled.');
+	const shWasm = await curl('bundle-sh', '/_commands/sh.wasm');
+	assert.equal(shWasm.status, 200);
+	assert.equal(shWasm.body.length, sh.size);
+	assert.equal(
+		createHash('sha256').update(shWasm.body).digest('hex'),
+		sh.sha256
+	);
 	console.log(
-		'PASS /shell: 200, xterm styles permitted, script/connect CSP retained'
+		`PASS bundle: ${bundled.length} static commands, /_commands/sh.wasm matches its digest`
 	);
 
 	const index = await curl('cli-index', '/_mooncakes/cli-index');
@@ -241,7 +250,18 @@ try {
 			.status,
 		404
 	);
-	console.log('PASS source zip: 200 application/zip; latest rejected');
+	assert.equal(
+		(
+			await curl(
+				'skills-zip',
+				'/_mooncakes/skills/gaato/kbbi@0.1.6/cmd/kbbi/skills.zip'
+			)
+		).status,
+		404
+	);
+	console.log(
+		'PASS source zip: 200 application/zip; latest and skills.zip rejected'
+	);
 
 	assert.equal(
 		(await curl('latest', mirror.replace('@0.1.6', '@latest'))).status,

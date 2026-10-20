@@ -54,7 +54,7 @@ it('does not confuse guest prompt-looking output with the session prompt and pre
 	expect(activity.prompt).toBe('> ');
 	activity.stderr(new TextEncoder().encode('$ '));
 	expect(activity.prompt).toBe('> ');
-	const partial = new TextEncoder().encode('\x1b]play');
+	const partial = new TextEncoder().encode('\x1b]shel');
 	expect(activity.stderr(partial)).toHaveLength(0);
 	expect(activity.finish()).toEqual(partial);
 });

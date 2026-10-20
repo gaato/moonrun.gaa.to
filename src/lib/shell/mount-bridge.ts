@@ -27,13 +27,19 @@ const error = (code: 'EIO' | 'EBADF' | 'EINVAL'): Failure => ({
 });
 
 // Functions stay on the page thread; only operation data and owned byte ranges cross.
-export function mountServer(provider: MountProvider) {
+export function mountServer(
+	providers: Readonly<Record<string, MountProvider>>
+) {
 	let next = 0;
 	let closed = false;
 	const files = new Map<number, MountFile>();
 	return {
-		async call(request: MountCall): Promise<MountReply> {
+		async call(mount: string, request: MountCall): Promise<MountReply> {
 			if (closed) return error('EIO');
+			const provider = Object.hasOwn(providers, mount)
+				? providers[mount]
+				: undefined;
+			if (!provider) return error('EINVAL');
 			try {
 				if (request.op === 'stat') return await provider.stat(request.path);
 				if (request.op === 'readdir')
@@ -78,40 +84,44 @@ export function mountServer(provider: MountProvider) {
 		}
 	};
 }
-export function mountProxy(send: (id: number, request: MountCall) => void) {
+export function mountProxy(
+	send: (id: number, mount: string, request: MountCall) => void
+) {
 	let next = 0;
 	const pending = new Map<number, (result: MountReply) => void>();
-	function call<T>(request: MountCall): Promise<Result<T>> {
-		return new Promise((resolve) => {
-			const id = ++next;
-			pending.set(id, (value) => resolve(value as Result<T>));
-			send(id, request);
-		});
-	}
-	const provider: MountProvider = {
-		cache: true,
-		stat: (path) => call<MountStat>({ op: 'stat', path }),
-		readdir: (path) => call<readonly MountEntry[]>({ op: 'readdir', path }),
-		readlink: (path) => call<string>({ op: 'readlink', path }),
-		open: async (path) => {
-			const result = await call<{ handle: number; size: number }>({
-				op: 'open',
-				path
+	const provider = (mount: string): MountProvider => {
+		function call<T>(request: MountCall): Promise<Result<T>> {
+			return new Promise((resolve) => {
+				const id = ++next;
+				pending.set(id, (value) => resolve(value as Result<T>));
+				send(id, mount, request);
 			});
-			if (!result.ok) return result;
-			const { handle, size } = result.value;
-			return {
-				ok: true,
-				value: {
-					size,
-					read: (offset, length) =>
-						call<Uint8Array>({ op: 'read', handle, offset, length }),
-					close: () => {
-						void call<undefined>({ op: 'close', handle });
-					}
-				}
-			};
 		}
+		return {
+			cache: true,
+			stat: (path) => call<MountStat>({ op: 'stat', path }),
+			readdir: (path) => call<readonly MountEntry[]>({ op: 'readdir', path }),
+			readlink: (path) => call<string>({ op: 'readlink', path }),
+			open: async (path) => {
+				const result = await call<{ handle: number; size: number }>({
+					op: 'open',
+					path
+				});
+				if (!result.ok) return result;
+				const { handle, size } = result.value;
+				return {
+					ok: true,
+					value: {
+						size,
+						read: (offset, length) =>
+							call<Uint8Array>({ op: 'read', handle, offset, length }),
+						close: () => {
+							void call<undefined>({ op: 'close', handle });
+						}
+					}
+				};
+			}
+		};
 	};
 	return {
 		provider,
