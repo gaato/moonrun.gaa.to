@@ -301,24 +301,16 @@
 <h1>moonrun.gaa.to</h1>
 <p class="mb-3 max-w-3xl leading-relaxed">
 	<a class="link" href="https://github.com/gaato/moonrun-js">moonrun-js</a>
-	runs MoonBit wasm in your browser. This shell is cli/sh with the cli/* commands
-	from
+	runs MoonBit wasm in your browser. The shell is cli/sh with the cli/* commands from
 	<a class="link" href="https://github.com/moonbit-community/cmd"
 		>moonbit-community/cmd</a
-	>, compiled to wasm and published on mooncakes.io. <code>moonx</code> runs
-	other published packages:
-	<code
-		>moonx &lt;owner&gt;/&lt;module&gt;/&lt;package&gt;[@version] [args]</code
-	>, for example <code>moonx Yoorkin/cowsay hello</code> or
-	<code>moonx gaato/kbbi/cmd/kbbi --help</code>. Everything runs locally, and
-	programs that need network access fail. Unofficial, not affiliated with the
-	MoonBit team.
+	>; <code>moonx</code> runs other mooncakes packages, e.g.
+	<code>moonx Yoorkin/cowsay hello</code>.
 </p>
 <p class="mb-4 text-sm">
-	Add files or drop them on the terminal to put them in /work, download /work as
-	work.zip{#if canOpenFolder}, or open a folder at /mnt/local{/if}. Your files
-	stay in this browser. Enter sends a line · Ctrl+L redraws · Ctrl+C interrupts
-	(may exit sh) · Ctrl+D on an empty line ends input.
+	Drop files on the terminal to add them to /work. Files stay in this browser,
+	and programs can't reach the network. Ctrl+C interrupts (may exit sh) · Ctrl+D
+	ends input.
 </p>
 <div
 	role="region"
