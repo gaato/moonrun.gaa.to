@@ -3,6 +3,7 @@ import { LineDiscipline } from './line-discipline';
 function setup() {
 	const sink = {
 		echo: vi.fn(),
+		clear: vi.fn(),
 		write: vi.fn(async (_bytes: Uint8Array) => {}),
 		signal: vi.fn(),
 		end: vi.fn(),
@@ -63,4 +64,65 @@ it('handles multiline paste, CRLF and split escape sequences without inserting c
 	expect(
 		sink.write.mock.calls.map(([b]) => new TextDecoder().decode(b))
 	).toEqual(['one\n', 'two\n']);
+});
+
+it('clears on Ctrl+L locally, preserving editable Unicode input without writing or signaling sh', async () => {
+	const { sink, input } = setup();
+	input.input('echo 日本😀\x0c');
+	expect(sink.clear).toHaveBeenCalledExactlyOnceWith('echo 日本😀');
+	expect(input.line).toBe('echo 日本😀');
+	await input.flush();
+	expect(sink.write).not.toHaveBeenCalled();
+	expect(sink.signal).not.toHaveBeenCalled();
+	expect(sink.end).not.toHaveBeenCalled();
+	expect(input.ended).toBe(false);
+	input.input('\x7f語\r');
+	await input.flush();
+	expect(new TextDecoder().decode(sink.write.mock.calls[0][0])).toBe(
+		'echo 日本語\n'
+	);
+});
+it.each(['clear', '  clear  ', '\u2003clear\u2003'])(
+	'clears trimmed command %j and sends one empty line for a fresh prompt',
+	async (line) => {
+		const { sink, input } = setup();
+		input.input(line + '\r\n');
+		await input.flush();
+		expect(sink.clear).toHaveBeenCalledExactlyOnceWith();
+		expect(input.line).toBe('');
+		expect(sink.write).toHaveBeenCalledExactlyOnceWith(
+			new TextEncoder().encode('\n')
+		);
+		expect(sink.clear.mock.invocationCallOrder[0]).toBeLessThan(
+			sink.write.mock.invocationCallOrder[0]
+		);
+		expect(sink.signal).not.toHaveBeenCalled();
+	}
+);
+it.each([
+	'clear now',
+	' clear --help ',
+	'Clear',
+	'clear; echo ok',
+	'clear && echo ok',
+	'echo clear',
+	'"clear"',
+	'./clear'
+])('passes non-local command %j through unchanged', async (line) => {
+	const { sink, input } = setup();
+	input.input(line + '\r');
+	await input.flush();
+	expect(sink.clear).not.toHaveBeenCalled();
+	expect(sink.write).toHaveBeenCalledExactlyOnceWith(
+		new TextEncoder().encode(line + '\n')
+	);
+});
+it('keeps empty clear submissions ordered with other pasted lines', async () => {
+	const { sink, input } = setup();
+	input.input('echo before\rclear\recho after\r');
+	await input.flush();
+	expect(
+		sink.write.mock.calls.map(([bytes]) => new TextDecoder().decode(bytes))
+	).toEqual(['echo before\n', '\n', 'echo after\n']);
+	expect(sink.clear).toHaveBeenCalledExactlyOnceWith();
 });

@@ -1,5 +1,6 @@
 interface InputSink {
 	echo(text: string): void;
+	clear(line?: string): void;
 	write(bytes: Uint8Array): Promise<void>;
 	signal(number: number): void;
 	end(): void;
@@ -54,15 +55,19 @@ export class LineDiscipline {
 			}
 			this.carriage = char === '\r';
 			if (char === '\r' || char === '\n') {
-				const bytes = new TextEncoder().encode(this.line + '\n');
+				const clear = this.line.trim() === 'clear';
+				const bytes = new TextEncoder().encode((clear ? '' : this.line) + '\n');
 				this.line = '';
-				this.sink.echo('\r\n');
+				if (clear) this.sink.clear();
+				else this.sink.echo('\r\n');
 				this.tail = this.tail
 					.then(() => this.sink.write(bytes))
 					.catch((error) => {
 						this.ended = true;
 						this.sink.error(error);
 					});
+			} else if (char === '\x0c') {
+				this.sink.clear(this.line);
 			} else if (char === '\x03') {
 				this.line = '';
 				this.sink.echo('^C\r\n');

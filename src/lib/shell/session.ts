@@ -7,7 +7,7 @@ export function startSession(
 		name: string,
 		cwd?: string
 	) => Promise<Uint8Array | undefined>,
-	output: (bytes: Uint8Array) => void,
+	output: (bytes: Uint8Array, prompt?: '$ ' | '> ') => void,
 	mount?: MountProvider
 ) {
 	const worker = new Worker(new URL('./shell.worker.ts', import.meta.url), {
@@ -49,7 +49,7 @@ export function startSession(
 			).then((result) => {
 				if (!closing) send({ type: 'mounted', id: data.id, result });
 			});
-		} else if (data.type === 'output') output(data.bytes);
+		} else if (data.type === 'output') output(data.bytes, data.prompt);
 		else if (data.type === 'written') {
 			const pending = writes.get(data.id);
 			writes.delete(data.id);

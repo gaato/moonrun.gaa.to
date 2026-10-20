@@ -11,11 +11,17 @@ export function interruptCommand(
 export class ShellActivity {
 	running = false;
 	readonly environment: { PS1: string; PS2: string };
-	private marker: string;
+	prompt: '$ ' | '> ' = '$ ';
+	private markers: Map<string, '$ ' | '> '>;
 	private pending = '';
 	constructor(token: string) {
-		this.marker = `\x1b]playground-prompt;${token}\x07`;
-		this.environment = { PS1: this.marker + '$ ', PS2: this.marker + '> ' };
+		const primary = `\x1b]playground-prompt;${token};1\x07`;
+		const continuation = `\x1b]playground-prompt;${token};2\x07`;
+		this.markers = new Map([
+			[primary, '$ '],
+			[continuation, '> ']
+		]);
+		this.environment = { PS1: primary + '$ ', PS2: continuation + '> ' };
 	}
 	commandStarted(): void {
 		this.running = true;
@@ -24,11 +30,18 @@ export class ShellActivity {
 		const output: number[] = [];
 		for (const byte of bytes) {
 			this.pending += String.fromCharCode(byte);
-			while (this.pending && !this.marker.startsWith(this.pending)) {
+			while (
+				this.pending &&
+				![...this.markers.keys()].some((marker) =>
+					marker.startsWith(this.pending)
+				)
+			) {
 				output.push(this.pending.charCodeAt(0));
 				this.pending = this.pending.slice(1);
 			}
-			if (this.pending === this.marker) {
+			const prompt = this.markers.get(this.pending);
+			if (prompt) {
+				this.prompt = prompt;
 				this.pending = '';
 				this.running = false;
 			}

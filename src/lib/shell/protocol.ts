@@ -9,7 +9,7 @@ export type ShellRequest =
 	| { type: 'resolved'; id: number; wasm?: Uint8Array; failed?: boolean };
 export type ShellReply =
 	| { type: 'mount'; id: number; request: MountCall }
-	| { type: 'output'; bytes: Uint8Array }
+	| { type: 'output'; bytes: Uint8Array; prompt?: '$ ' | '> ' }
 	| { type: 'resolve'; id: number; name: string; cwd?: string }
 	| { type: 'written'; id: number; error?: string }
 	| { type: 'outcome'; outcome: RunOutcome }

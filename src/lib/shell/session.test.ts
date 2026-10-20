@@ -34,7 +34,13 @@ it('bridges byte input/output, command resolution, signal and EOF to runInWorker
 	worker.emit({ type: 'written', id: 1 });
 	await writing;
 	worker.emit({ type: 'output', bytes: new Uint8Array([4]) });
-	expect(output).toHaveBeenCalledWith(new Uint8Array([4]));
+	expect(output).toHaveBeenCalledWith(new Uint8Array([4]), undefined);
+	worker.emit({
+		type: 'output',
+		bytes: new Uint8Array([62, 32]),
+		prompt: '> '
+	});
+	expect(output).toHaveBeenLastCalledWith(new Uint8Array([62, 32]), '> ');
 	worker.emit({ type: 'resolve', id: 2, name: 'cat' });
 	await Promise.resolve();
 	expect(worker.sent).toContainEqual({

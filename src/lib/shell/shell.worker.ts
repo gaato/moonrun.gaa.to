@@ -67,7 +67,8 @@ scope.onmessage = async ({ data }: MessageEvent<ShellRequest>) => {
 				stdout: (bytes) => reply({ type: 'output', bytes }),
 				stderr: (bytes) => {
 					const visible = activity.stderr(bytes);
-					if (visible.length) reply({ type: 'output', bytes: visible });
+					if (visible.length)
+						reply({ type: 'output', bytes: visible, prompt: activity.prompt });
 				},
 				resolveCommand: (name, _args, context) =>
 					new Promise((resolve, reject) => {

@@ -148,6 +148,7 @@
 			if (!alive || abort.signal.aborted) return;
 			cliIndex = commands;
 			terminal?.write('\r\n' + shellHint + '\r\n');
+			let prompt = '$ ';
 			const running = (session = startSession(
 				wasm,
 				async (name, cwd) => {
@@ -159,11 +160,18 @@
 						throw error;
 					}
 				},
-				(bytes) => terminal?.write(bytes),
+				(bytes, currentPrompt) => {
+					if (currentPrompt) prompt = currentPrompt;
+					terminal?.write(bytes);
+				},
 				mount
 			));
 			discipline = new LineDiscipline({
 				echo: (text) => terminal?.write(text),
+				clear: (line) =>
+					terminal?.write(
+						'\x1b[2J\x1b[H' + (line === undefined ? '' : prompt + line)
+					),
 				write: (bytes) => running.write(bytes),
 				signal: (number) => running.signal(number),
 				end: () => running.end(),
@@ -212,8 +220,9 @@
 	> locally in your browser. Network access is unavailable.
 </p>
 <p class="mb-4 text-sm">
-	Enter sends a line · Backspace edits · Ctrl+C interrupts (may exit sh) ·
-	Ctrl+D on an empty line ends input. Files in /work last for this session.
+	Enter sends a line · Backspace edits · Ctrl+L redraws · clear clears locally ·
+	Ctrl+C interrupts (may exit sh) · Ctrl+D on an empty line ends input. Files in
+	/work last for this session.
 </p>
 <div
 	class="shell-terminal rounded-lg bg-[#101318] p-3"
