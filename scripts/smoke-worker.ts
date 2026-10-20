@@ -193,33 +193,6 @@ try {
 		`PASS bundle: ${bundled.length} static commands, /_commands/sh.wasm matches its digest`
 	);
 
-	const index = await curl('cli-index', '/_mooncakes/cli-index');
-	assert.equal(index.status, 200, 'CLI index failed.');
-	assert.match(index.contentType, /^application\/json\b/);
-	const entries = JSON.parse(index.body.toString()) as {
-		name: string;
-		version: string;
-	}[];
-	assert.ok(Array.isArray(entries) && entries.length > 0);
-	assert.ok(entries.some((entry) => entry.name === 'cli/sh'));
-	for (const entry of entries) {
-		assert.deepEqual(Object.keys(entry).sort(), ['name', 'version']);
-		assert.match(entry.name, /^cli\/[A-Za-z0-9_-][A-Za-z0-9_.-]*$/);
-		assert.match(entry.version, /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?$/);
-	}
-	const indexHeaders = await readFile(
-		join(directory, 'cli-index.headers'),
-		'utf8'
-	);
-	assert.match(indexHeaders, /cache-control: public, max-age=600/im);
-	assert.deepEqual(
-		(await curl('cli-index-cached', '/_mooncakes/cli-index')).body,
-		index.body
-	);
-	console.log(
-		`PASS CLI index: 200 JSON, ${entries.length} versioned modules, 10-minute cache`
-	);
-
 	const mirror = '/_mooncakes/prebuild' + program;
 	const wasm = await curl('wasm', mirror);
 	assert.equal(wasm.status, 200, 'Wasm mirror failed.');
@@ -238,30 +211,13 @@ try {
 	);
 	console.log(`PASS mirror: 200 application/wasm, SHA-256 ${digest}`);
 
-	const source = await curl(
-		'source-zip',
-		'/_mooncakes/user/gaato/kbbi/0.1.6.zip'
-	);
-	assert.equal(source.status, 200, 'Source zip mirror failed.');
-	assert.equal(source.contentType, 'application/zip');
-	assert.deepEqual(source.body.subarray(0, 4), Buffer.from([0x50, 0x4b, 3, 4]));
-	assert.equal(
-		(await curl('source-latest', '/_mooncakes/user/gaato/kbbi/latest.zip'))
-			.status,
-		404
-	);
-	assert.equal(
-		(
-			await curl(
-				'skills-zip',
-				'/_mooncakes/skills/gaato/kbbi@0.1.6/cmd/kbbi/skills.zip'
-			)
-		).status,
-		404
-	);
-	console.log(
-		'PASS source zip: 200 application/zip; latest and skills.zip rejected'
-	);
+	for (const path of [
+		'/_mooncakes/cli-index',
+		'/_mooncakes/user/gaato/kbbi/0.1.6.zip',
+		'/_mooncakes/skills/gaato/kbbi@0.1.6/cmd/kbbi/skills.zip'
+	])
+		assert.equal((await curl('removed', path)).status, 404, path);
+	console.log('PASS removed routes (cli-index, source zip, skills.zip): 404');
 
 	assert.equal(
 		(await curl('latest', mirror.replace('@0.1.6', '@latest'))).status,

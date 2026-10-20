@@ -1,13 +1,11 @@
 import { parseModulePath, wasmUrl } from './paths';
 
-export const cliIndexEndpoint = '/_mooncakes/cli-index';
 // Written at build time by scripts/prepare-commands.ts, next to the bundled wasm files.
 export const bundleIndexPath = '/_commands/index.json';
-export const modulesEndpoint = 'https://mooncakes.io/api-new/v0/modules';
 export interface CliModule {
 	name: string;
 	version: string;
-	/** Present for bundled commands, which are served from /_commands/. */
+	/** Bundled commands are served from /_commands/ and verified against this. */
 	sha256?: string;
 	size?: number;
 }
@@ -21,7 +19,7 @@ export function bundledPath(entry: CliModule): string {
 	return `/_commands/${commandName(entry)}.wasm`;
 }
 
-// The registry list includes libraries. A valid coordinate need not be executable.
+// Valid, non-yanked, concretely versioned cli/* coordinates.
 export function filterCliIndex(value: unknown): CliModule[] {
 	if (!Array.isArray(value)) throw new Error('Invalid CLI index.');
 	const entries = new Map<string, CliModule>();
@@ -66,33 +64,21 @@ export function parseBundleIndex(value: unknown): CliModule[] {
 	});
 }
 
-export async function fetchCliIndex(
-	signal?: AbortSignal,
-	fetcher: typeof fetch = fetch
-): Promise<CliModule[]> {
-	const response = await fetcher(cliIndexEndpoint, {
-		signal,
-		cache: 'no-store'
-	});
-	if (!response.ok)
-		throw new Error(`Could not load CLI index (${response.status}).`);
-	return filterCliIndex(await response.json());
-}
-
-// Static assets first: they cost no Worker requests. The live index covers builds
-// without a bundle (for example `vite dev` before `pnpm prepare:commands`).
+// Static assets only: they cost no Worker requests. Every build bundles cli/*.
 export async function fetchCommandIndex(
 	signal?: AbortSignal,
 	fetcher: typeof fetch = fetch
 ): Promise<CliModule[]> {
+	const response = await fetcher(bundleIndexPath, { signal });
+	let entries: CliModule[] = [];
 	try {
-		const response = await fetcher(bundleIndexPath, { signal });
-		if (response.ok) {
-			const entries = parseBundleIndex(await response.json());
-			if (entries.length) return entries;
-		}
+		if (response.ok) entries = parseBundleIndex(await response.json());
 	} catch {
 		signal?.throwIfAborted();
 	}
-	return fetchCliIndex(signal, fetcher);
+	if (!entries.length)
+		throw new Error(
+			`The command bundle (${bundleIndexPath}) is missing; build with \`pnpm build\` or run \`pnpm prepare:commands\`.`
+		);
+	return entries;
 }

@@ -1,1 +1,0 @@
-Executable declaration fixtures: `root.moon.pkg` is cli/sh 0.2.1, `nested.moon.pkg` is gaato/kbbi 0.1.6 (cmd/kbbi), and `options.moon.pkg` is Yoorkin/cowsay 0.1.0, copied from the public module source archives. `legacy.moon.pkg.json` is a representative legacy manifest. Third-party snippets retain their publishers' rights.

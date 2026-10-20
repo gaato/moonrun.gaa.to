@@ -1,38 +1,33 @@
 import { expect, it } from 'vitest';
-import { downloadPath, mirroredDownload } from './downloads';
-it('maps public program, checksum and source archive URLs to the same-origin mirror', () => {
-	for (const path of [
-		'/prebuild/cli/sh@0.2.1/sh.wasm',
+import { downloadPath } from './downloads';
+it.each([
+	['/prebuild/cli/sh@0.2.1/sh.wasm', '/prebuild/cli/sh@0.2.1/sh.wasm'],
+	[
 		'/prebuild/cli/sh@0.2.1/sh.wasm.sha256',
-		'/user/gaato/kbbi/0.1.6.zip'
-	]) {
-		expect(mirroredDownload('https://download.mooncakes.io' + path)).toBe(
-			'/_mooncakes' + path
-		);
-	}
-	expect(downloadPath('/prebuild/cli/sh%400.2.1/sh.wasm')).toBe(
-		'/prebuild/cli/sh@0.2.1/sh.wasm'
-	);
+		'/prebuild/cli/sh@0.2.1/sh.wasm.sha256'
+	],
+	['/prebuild/cli/sh%400.2.1/sh.wasm', '/prebuild/cli/sh@0.2.1/sh.wasm'],
+	[
+		'/prebuild/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm',
+		'/prebuild/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm'
+	],
+	['/prebuild/a/b/v2@2.0.0/v2.wasm', '/prebuild/a/b/v2@2.0.0/v2.wasm'],
+	[
+		'/prebuild/a/b/v2@2.0.0/tool/tool.wasm',
+		'/prebuild/a/b/v2@2.0.0/tool/tool.wasm'
+	]
+])('accepts prebuild path %s', (path, canonical) => {
+	expect(downloadPath(path)).toBe(canonical);
 });
 it.each([
-	'https://evil.example/prebuild/a/b@1.0.0/b.wasm',
-	'https://user:secret@download.mooncakes.io/prebuild/a/b@1.0.0/b.wasm',
-	'https://download.mooncakes.io/prebuild/a/b@latest/b.wasm',
-	'https://download.mooncakes.io/prebuild/a/b@1.0.0/../b@1.0.0/b.wasm',
-	'https://download.mooncakes.io/prebuild/a/b@1.0.0/b.wasm?token=private',
-	'https://download.mooncakes.io/prebuild/a/b@1.0.0/b.wasm#fragment',
-	'https://download.mooncakes.io/skills/a/b@1.0.0/skills.zip'
-])('rejects unsafe registry URL %s', (url) => {
-	expect(() => mirroredDownload(url)).toThrow();
-});
-
-it.each([
-	'/user/gaato/kbbi/latest.zip',
-	'/user/gaato/kbbi/0.1.zip',
-	'/user/gaato/kbbi/0.1.6.tar',
-	'/user/gaato/kbbi/0.1.6.zip/extra',
-	'/user/gaato/kbbi%2fevil/0.1.6.zip',
-	'/user/gaato/kbbi/../0.1.6.zip'
-])('rejects invalid source zip path %s', (path) =>
-	expect(downloadPath(path)).toBeNull()
-);
+	'/user/gaato/kbbi/0.1.6.zip',
+	'/skills/cli/sh@0.2.1/skills.zip',
+	'/prebuild/a/b@latest/b.wasm',
+	'/prebuild/a/b/b.wasm',
+	'/prebuild/a/b/v1@1.0.0/v1.wasm',
+	'/prebuild/a/b/v02@2.0.0/v02.wasm',
+	'/prebuild/a/b@1.0.0/../b@1.0.0/b.wasm',
+	'/prebuild/a/b@1.0.0/b.wasm?token=private',
+	'/prebuild/a/b@1.0.0/b.js',
+	'/prebuild/a/b@1.0.0/%2fetc.wasm'
+])('rejects %s', (path) => expect(downloadPath(path)).toBeNull());

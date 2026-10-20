@@ -1,6 +1,4 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { createMooncakesMount } from './mooncakes-mount';
-import { mountRegistry } from './fixtures/mount-registry';
 import { startSession } from './session';
 import { createBinMount } from './bin-mount';
 import type { BrowserDirectoryHandle } from 'moonrun-js/browser';
@@ -27,7 +25,9 @@ class FakeWorker {
 afterEach(() => vi.unstubAllGlobals());
 it('bridges byte input/output, command resolution, signal and EOF to runInWorker supervisor', async () => {
 	vi.stubGlobal('Worker', FakeWorker);
-	const resolver = vi.fn(async (_name: string) => new Uint8Array([2]));
+	const resolver = vi.fn(
+		async (_name: string, _args: readonly string[]) => new Uint8Array([2])
+	);
 	const output = vi.fn();
 	const added = vi.fn();
 	const session = startSession({
@@ -53,12 +53,13 @@ it('bridges byte input/output, command resolution, signal and EOF to runInWorker
 		prompt: '> '
 	});
 	expect(output).toHaveBeenLastCalledWith(new Uint8Array([62, 32]), '> ');
-	worker.emit({ type: 'resolve', id: 2, name: 'cat' });
+	worker.emit({ type: 'resolve', id: 2, name: 'cat', args: ['-n'] });
 	await Promise.resolve();
+	expect(resolver).toHaveBeenCalledWith('cat', ['-n']);
 	expect(worker.sent).toContainEqual({
 		type: 'resolved',
 		id: 2,
-		wasm: new Uint8Array([2])
+		command: new Uint8Array([2])
 	});
 	session.signal(2);
 	session.end();
@@ -103,13 +104,14 @@ it('stops the supervisor and rejects pending writes when navigation ends the ses
 
 it('keeps providers on the page thread per mount point and forwards files and the folder handle', async () => {
 	vi.stubGlobal('Worker', FakeWorker);
-	const r = mountRegistry();
-	const mount = createMooncakesMount({ fetcher: r.fetcher });
 	const bin = createBinMount(
 		[{ name: 'cli/sh', version: '0.2.1' }],
 		async () => new Uint8Array([0, 97, 115, 109])
 	);
-	const resolve = vi.fn(async (_name: string) => undefined);
+	const command = { wasm: new Uint8Array([3]), args: ['hi'], argv0: 'cowsay' };
+	const resolve = vi.fn(
+		async (_name: string, _args: readonly string[]) => command
+	);
 	const folder = {
 		kind: 'directory',
 		name: 'picked'
@@ -119,7 +121,7 @@ it('keeps providers on the page thread per mount point and forwards files and th
 		wasm: new Uint8Array(),
 		resolveCommand: resolve,
 		output: () => {},
-		mounts: { '/bin': bin, '/mooncakes': mount },
+		mounts: { '/bin': bin },
 		files,
 		folder
 	});
@@ -127,15 +129,9 @@ it('keeps providers on the page thread per mount point and forwards files and th
 	expect(worker.sent[0]).toEqual({
 		type: 'start',
 		wasm: new Uint8Array(),
-		mounts: ['/bin', '/mooncakes'],
+		mounts: ['/bin'],
 		files,
 		folder
-	});
-	worker.emit({
-		type: 'mount',
-		id: 10,
-		mount: '/mooncakes',
-		request: { op: 'readdir', path: '/' }
 	});
 	worker.emit({
 		type: 'mount',
@@ -146,24 +142,21 @@ it('keeps providers on the page thread per mount point and forwards files and th
 	await vi.waitFor(() => {
 		expect(worker.sent).toContainEqual({
 			type: 'mounted',
-			id: 10,
-			result: {
-				ok: true,
-				value: [
-					{ name: 'Yoorkin', kind: 'dir' },
-					{ name: 'cli', kind: 'dir' },
-					{ name: 'gaato', kind: 'dir' }
-				]
-			}
-		});
-		expect(worker.sent).toContainEqual({
-			type: 'mounted',
 			id: 11,
 			result: { ok: true, value: [{ name: 'sh', kind: 'file' }] }
 		});
 	});
-	worker.emit({ type: 'resolve', id: 12, name: 'cowsay' });
-	expect(resolve).toHaveBeenCalledWith('cowsay');
+	worker.emit({
+		type: 'resolve',
+		id: 12,
+		name: 'moonx',
+		args: ['Yoorkin/cowsay', 'hi']
+	});
+	expect(resolve).toHaveBeenCalledWith('moonx', ['Yoorkin/cowsay', 'hi']);
+	// Interpreter-style results cross to the supervisor unchanged.
+	await vi.waitFor(() =>
+		expect(worker.sent).toContainEqual({ type: 'resolved', id: 12, command })
+	);
 	const handle = { kind: 'directory', name: 'other' } as BrowserDirectoryHandle;
 	session.mountFolder(handle);
 	expect(worker.sent.at(-1)).toEqual({ type: 'folder', handle });

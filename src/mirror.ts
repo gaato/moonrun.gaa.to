@@ -1,9 +1,4 @@
 import {
-	cliIndexEndpoint,
-	filterCliIndex,
-	modulesEndpoint
-} from './lib/cli-index';
-import {
 	downloadOrigin,
 	downloadPath,
 	mirrorPrefix,
@@ -72,58 +67,6 @@ function limitedBody(
 	});
 }
 
-async function cliIndex(
-	request: Request,
-	context: Context,
-	{ cache, fetcher }: Dependencies
-): Promise<Response> {
-	const url = new URL(request.url);
-	if (
-		url.search ||
-		url.hash ||
-		(request.method !== 'GET' && request.method !== 'HEAD')
-	)
-		return failure(404);
-	const key = new Request(url.origin + cliIndexEndpoint);
-	let response: Response | undefined;
-	try {
-		response = await cache.match(key);
-	} catch {
-		/* Fetch on cache outages. */
-	}
-	if (!response) {
-		try {
-			const upstream = await fetcher(
-				new Request(modulesEndpoint, {
-					credentials: 'omit',
-					redirect: 'follow',
-					headers: {
-						'Accept-Encoding': 'identity',
-						'User-Agent': userAgent
-					}
-				})
-			);
-			if (upstream.status !== 200 || !upstream.body) return failure(502);
-			const entries = filterCliIndex(
-				await new Response(limitedBody(upstream.body)).json()
-			);
-			response = Response.json(entries, {
-				headers: {
-					'Cache-Control': 'public, max-age=600',
-					'X-Content-Type-Options': 'nosniff',
-					'Cross-Origin-Resource-Policy': 'same-origin'
-				}
-			});
-			context.waitUntil(cache.put(key, response.clone()).catch(() => {}));
-		} catch {
-			return failure(502);
-		}
-	}
-	if (request.method === 'GET') return response;
-	void response.body?.cancel().catch(() => {});
-	return new Response(null, { headers: response.headers });
-}
-
 export async function handleRequest(
 	request: Request,
 	env: Env,
@@ -134,8 +77,6 @@ export async function handleRequest(
 	const rawPath = request.url.match(/^https?:\/\/[^/]+(\/[^?#]*)/)?.[1] ?? '/';
 	if (!rawPath.startsWith(mirrorPrefix + '/')) return env.ASSETS.fetch(request);
 	const url = new URL(request.url);
-	if (rawPath === cliIndexEndpoint)
-		return cliIndex(request, context, dependencies);
 	const path = downloadPath(rawPath.slice(mirrorPrefix.length));
 	if (
 		!path ||
@@ -187,9 +128,7 @@ export async function handleRequest(
 		const headers = new Headers({
 			'Content-Type': path.endsWith('.sha256')
 				? 'text/plain; charset=utf-8'
-				: path.endsWith('.wasm')
-					? 'application/wasm'
-					: 'application/zip',
+				: 'application/wasm',
 			'Cache-Control': 'public, max-age=31536000, immutable',
 			'X-Content-Type-Options': 'nosniff',
 			'Cross-Origin-Resource-Policy': 'same-origin'

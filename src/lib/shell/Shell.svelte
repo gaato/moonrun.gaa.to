@@ -3,18 +3,16 @@
 	import type { Terminal } from '@xterm/xterm';
 	import type { BrowserDirectoryHandle } from 'moonrun-js/browser';
 	import '@xterm/xterm/css/xterm.css';
-	import { createResolver } from './resolver';
+	import { createMoonx } from './moonx';
 	import { fetchCommandIndex, type CliModule } from '../cli-index';
 	import { LineDiscipline } from './line-discipline';
-	import { createMooncakesMount } from './mooncakes-mount';
 	import { createBinMount } from './bin-mount';
 	import { createCommandLoader } from './commands';
 	import { preloadCommands } from './preload';
-	import { binMount, mooncakesMount, shellHint, shellPath } from './work';
+	import { binMount, shellHint, shellPath } from './work';
 	import { startSession } from './session';
 	import { shareLink, sharedCommand } from './share';
 	import type { AddedFile } from './protocol';
-	import { fetchSkills, type Skill } from '../skills';
 	import { exitStatus, workFilename } from '../execution';
 
 	const maxFileBytes = 64 * 1024 * 1024;
@@ -28,7 +26,6 @@
 	let status = $state('Starting shell…');
 	let active = $state(false);
 	let loading = $state(true);
-	let warning = $state('');
 	let command = $state('');
 	let copied = $state('');
 	let dragging = $state(false);
@@ -121,21 +118,12 @@
 		const abort = (controller = new AbortController());
 		active = false;
 		loading = true;
-		warning = '';
 		atPrompt = false;
 		status = 'Loading commands…';
 		terminal?.reset();
 		terminal?.write(status);
 		try {
-			const [index, skills] = await Promise.all([
-				loadIndex(),
-				fetchSkills(abort.signal).catch(() => {
-					if (!abort.signal.aborted)
-						warning =
-							'Skills could not be loaded. The cli/* commands are still available.';
-					return [] as Skill[];
-				})
-			]);
+			const index = await loadIndex();
 			if (!alive || abort.signal.aborted) return;
 			const load = createCommandLoader({ signal: abort.signal });
 			const sh = index.find((entry) => entry.name === 'cli/sh');
@@ -157,7 +145,7 @@
 				}
 			});
 			if (!alive || abort.signal.aborted) return;
-			const resolver = createResolver(skills, { signal: abort.signal });
+			const moonx = createMoonx({ signal: abort.signal });
 			const files = pendingFiles;
 			pendingFiles = [];
 			terminal?.write('\r\x1b[2K' + shellHint + '\r\n');
@@ -169,15 +157,9 @@
 				terminal?.write(`Mounted folder "${folder.name}" at /mnt/local.\r\n`);
 			const running = (session = startSession({
 				wasm,
-				resolveCommand: async (name) => {
-					try {
-						return await resolver(name);
-					} catch (error) {
-						if (!abort.signal.aborted)
-							status = `Could not load ${name}: ${String(error)}`;
-						throw error;
-					}
-				},
+				// moonx is the only command outside the filesystem PATH.
+				resolveCommand: async (name, args) =>
+					name === 'moonx' ? moonx(args) : undefined,
 				output: (bytes, currentPrompt) => {
 					terminal?.write(bytes);
 					if (!currentPrompt) return;
@@ -193,8 +175,7 @@
 					for (const failure of failures) notice(`Could not add ${failure}`);
 				},
 				mounts: {
-					[binMount]: createBinMount(commands, load),
-					[mooncakesMount]: createMooncakesMount({ signal: abort.signal })
+					[binMount]: createBinMount(commands, load)
 				},
 				files,
 				folder
@@ -324,9 +305,14 @@
 	from
 	<a class="link" href="https://github.com/moonbit-community/cmd"
 		>moonbit-community/cmd</a
-	>, compiled to wasm and published on mooncakes.io. Everything runs locally,
-	without network access; /mooncakes has the published modules, read-only.
-	Unofficial, not affiliated with the MoonBit team.
+	>, compiled to wasm and published on mooncakes.io. <code>moonx</code> runs
+	other published packages:
+	<code
+		>moonx &lt;owner&gt;/&lt;module&gt;/&lt;package&gt;[@version] [args]</code
+	>, for example <code>moonx Yoorkin/cowsay hello</code> or
+	<code>moonx gaato/kbbi/cmd/kbbi --help</code>. Everything runs locally, and
+	programs that need network access fail. Unofficial, not affiliated with the
+	MoonBit team.
 </p>
 <p class="mb-4 text-sm">
 	Add files or drop them on the terminal to put them in /work, download /work as
@@ -406,7 +392,6 @@
 	{#if copied}<span role="status" class="text-sm break-all">{copied}</span>{/if}
 </div>
 <p role="status" class="my-3 text-sm">{status}</p>
-{#if warning}<p role="note" class="my-3">{warning}</p>{/if}
 
 <style>
 	.shell-terminal {

@@ -7,8 +7,8 @@ import type * as Browser from 'moonrun-js/browser';
 import type { MountProvider } from 'moonrun-js/browser';
 import { verifySha256 } from '../integrity';
 import { userAgent } from '../downloads';
-import { createMooncakesMount } from './mooncakes-mount';
-import { mountRegistry } from './fixtures/mount-registry';
+import { createMoonx } from './moonx';
+import { createHash } from 'node:crypto';
 import { mountProxy, mountServer } from './mount-bridge';
 import { folderPath, shellFiles, shellPath } from './work';
 import { interruptCommand, ShellActivity } from './interrupt';
@@ -23,7 +23,7 @@ const cache = resolve('.cache/shell-fixtures');
 let browser: typeof Browser;
 // Stable execution fixtures, not the runtime's command/version catalog.
 const version = '0.2.1';
-const names = ['sh', 'echo', 'tr', 'false', 'cat', 'ls', 'cp', 'mkdir'];
+const names = ['sh', 'echo', 'tr', 'false', 'cat', 'ls', 'cp', 'mkdir', 'wc'];
 const fixtures = new Map<string, Uint8Array>();
 const checksums = new Map<string, string>();
 beforeAll(async () => {
@@ -88,8 +88,23 @@ function mounts(extra: Record<string, MountProvider> = {}) {
 	);
 }
 const env = { HOME: '/work', PATH: shellPath };
-const skills = vi.fn(async (name: string) =>
-	name === 'skill-echo' ? program('echo') : undefined
+// A fake registry for moonx: one module whose cmd/hello package is really cli/echo.
+const registryFetch = vi.fn<typeof fetch>(async (input) => {
+	const url = String(input);
+	if (url === 'https://mooncakes.io/api-new/v0/modules/test/tool')
+		return Response.json({ latest_version: '1.0.0' });
+	const hello = '/_mooncakes/prebuild/test/tool@1.0.0/cmd/hello/hello.wasm';
+	if (url === hello) return new Response(new Uint8Array(program('echo')));
+	if (url === hello + '.sha256')
+		return new Response(
+			createHash('sha256').update(program('echo')).digest('hex')
+		);
+	return new Response('', { status: 404 });
+});
+// One moonx per "session", as in the app (it memoizes versions and bytes).
+let session: ReturnType<typeof createMoonx> | undefined;
+const moonx = vi.fn((args: readonly string[]) =>
+	(session ??= createMoonx({ fetcher: registryFetch }))(args)
 );
 async function run(
 	script: string,
@@ -106,7 +121,8 @@ async function run(
 		files,
 		env,
 		mounts: { ...mounts(extra), ...local },
-		resolveCommand: (name) => skills(name),
+		resolveCommand: (name, args) =>
+			name === 'moonx' ? moonx(args) : Promise.resolve(undefined),
 		stdout: (bytes) => {
 			stdout += decoder.decode(bytes);
 		},
@@ -121,11 +137,11 @@ it('runs the real sh/echo/tr wasm pipeline from /bin on PATH', async () => {
 	const result = await run('echo hello | tr a-z A-Z');
 	expect(result.stdout).toBe('HELLO\n');
 	expect(result.outcome).toEqual({ kind: 'completed' });
-	expect(skills).not.toHaveBeenCalledWith('echo');
+	expect(moonx).not.toHaveBeenCalled();
 }, 30000);
-it('lists /bin, prefers /work/bin, runs ./prog.wasm and falls back to skills by name', async () => {
+it('lists /bin, prefers /work/bin, runs ./prog.wasm and has no /mooncakes', async () => {
 	const result = await run(
-		'ls /bin; cat hi.txt; ./prog.wasm direct; cat path; skill-echo fallback',
+		'ls /bin; cat hi.txt; ./prog.wasm direct; cat path; ls /',
 		{
 			...shellFiles,
 			'/work/hi.txt': 'from work\n',
@@ -136,10 +152,53 @@ it('lists /bin, prefers /work/bin, runs ./prog.wasm and falls back to skills by 
 	);
 	expect(result.outcome, result.stderr).toEqual({ kind: 'completed' });
 	expect(result.stdout).toBe(
-		names.slice().sort().join('\n') + '\nhi.txt\ndirect\npath\nfallback\n'
+		names.slice().sort().join('\n') + '\nhi.txt\ndirect\npath\nbin\nwork\n'
 	);
-	expect(skills).toHaveBeenCalledWith('skill-echo');
 }, 30000);
+it('runs a registry package through moonx with its own arguments, in a pipeline', async () => {
+	const result = await run(
+		'moonx test/tool/cmd/hello -- one two; moonx test/tool@1.0.0/cmd/hello a | wc -l; moonx --verbose test/tool/cmd/hello@latest b'
+	);
+	expect(result.outcome, result.stderr).toEqual({ kind: 'completed' });
+	expect(result.stdout.split('\n').map((line) => line.trim())).toEqual([
+		'one two',
+		'1',
+		'b',
+		''
+	]);
+	// The latest version and verified bytes are fetched once for the session.
+	expect(
+		registryFetch.mock.calls.filter(([url]) => String(url).includes('api-new'))
+	).toHaveLength(1);
+	expect(
+		registryFetch.mock.calls.filter(([url]) => String(url).endsWith('.wasm'))
+	).toHaveLength(1);
+}, 30000);
+it.each([
+	['no/such/pkg', 'Error: Module `no/such` not found in registry', 255],
+	['test/tool/cmd/missing', 'Error: Prebuilt wasm asset does not exist', 255],
+	[
+		"'test/tool/...'",
+		'Error: Invalid package coordinate `test/tool/...`: wildcard package paths are not supported',
+		255
+	],
+	['script.mbtx', '.mbtx scripts need the MoonBit compiler', 255],
+	[
+		'--experimental-policy p.json test/tool/cmd/hello',
+		'moonx: --experimental-policy is not supported in the browser',
+		2
+	],
+	['--bogus', "error: unexpected argument '--bogus' found", 2]
+])(
+	'reports moonx %s on stderr with a status',
+	async (args, message, status) => {
+		const result = await run(`moonx ${args}; echo "status=$?"`);
+		expect(result.outcome).toEqual({ kind: 'completed' });
+		expect(result.stderr).toContain(message);
+		expect(result.stdout).toBe(`status=${status}\n`);
+	},
+	30000
+);
 it('preserves command exit status in false; echo $?', async () => {
 	expect((await run('false; echo $?')).stdout).toBe('1\n');
 }, 30000);
@@ -293,27 +352,4 @@ it('keeps sh and /work alive on idle Ctrl+C and retains SIGINT compatibility whi
 		stdin.end();
 		if (!finished) host.signal(9);
 	}
-}, 30000);
-
-it('runs real ls/cat against the lazy read-only /mooncakes provider and executes a relative mounted wasm by path', async () => {
-	const r = mountRegistry();
-	r.wasm('/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm', program('echo'));
-	const mooncakes = createMooncakesMount({ fetcher: r.fetcher });
-	const listing = await run('ls -F /mooncakes/gaato', shellFiles, {
-		'/mooncakes': mooncakes
-	});
-	expect(listing.outcome, listing.stderr).toEqual({ kind: 'completed' });
-	expect(r.zipCalls()).toHaveLength(0);
-	expect(listing.stdout).toBe('kbbi/\n');
-	const result = await run(
-		'cat sample.json; ls /mooncakes/gaato; /mooncakes/gaato/kbbi/cmd/kbbi/kbbi.wasm absolute; cd /mooncakes/gaato/kbbi; ./cmd/kbbi/kbbi.wasm mounted; echo nope > README.md; cat README.md',
-		shellFiles,
-		{ '/mooncakes': mooncakes }
-	);
-	expect(result.outcome).toEqual({ kind: 'completed' });
-	expect(result.stdout).toContain('kbbi\nabsolute\nmounted\n');
-	expect(result.stdout).toContain('{"a":[1,2,3]}');
-	expect(result.stdout.match(/Fixture module/g)).toHaveLength(1);
-	expect(result.stderr).toContain('Read-only file system');
-	expect(r.zipCalls()).toHaveLength(1);
 }, 30000);

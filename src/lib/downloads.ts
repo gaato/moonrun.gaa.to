@@ -8,8 +8,9 @@ const concreteVersion = new RegExp(
 	`^${number}\\.${number}\\.${number}(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$`
 );
 
-// Shared by the browser URL mapper and server allowlist. Decode once, then
-// re-encode canonically; never let URL normalization hide traversal from this check.
+// Shared by the browser URL mapper and server allowlist: prebuilt wasm and its
+// checksum, /prebuild/<owner>/<module>[/vN]@<version>/[<package>/]<name>.wasm[.sha256].
+// Decode once, then re-encode canonically; never let URL normalization hide traversal.
 export function downloadPath(pathname: string): string | null {
 	if (
 		!pathname.startsWith('/') ||
@@ -24,52 +25,30 @@ export function downloadPath(pathname: string): string | null {
 		return null;
 	}
 	if (parts.some((part) => part.includes('..'))) return null;
-	const [kind, owner, coordinate, ...tail] = parts;
-	if (!owner || !segment.test(owner) || !coordinate) return null;
-	if (kind === 'user') {
-		if (
-			!segment.test(coordinate) ||
-			tail.length !== 1 ||
-			!tail[0].endsWith('.zip') ||
-			!concreteVersion.test(tail[0].slice(0, -4))
-		)
-			return null;
-		return '/' + parts.map(encodeURIComponent).join('/');
-	}
-	if (kind !== 'prebuild') return null;
-	const [module, version, ...extra] = coordinate.split('@');
+	const [kind, owner, ...rest] = parts;
+	if (kind !== 'prebuild' || !owner || !segment.test(owner)) return null;
+	// A major-version suffix (v2, v10, ...) is part of the module name.
+	const suffixed = /^v(?:[2-9]|[1-9][0-9]+)@/.test(rest[1] ?? '');
+	const module = suffixed ? rest[0] : undefined;
+	const [name, version, ...extra] = (
+		suffixed ? rest[1] : (rest[0] ?? '')
+	).split('@');
+	const tail = rest.slice(suffixed ? 2 : 1);
 	if (
-		!segment.test(module) ||
+		(module !== undefined && !segment.test(module)) ||
+		!segment.test(name) ||
 		!version ||
 		!concreteVersion.test(version) ||
 		extra.length ||
 		!tail.length ||
-		!tail.every((part) => segment.test(part))
+		!tail.every((part) => segment.test(part)) ||
+		!/^.+\.wasm(?:\.sha256)?$/.test(tail.at(-1)!)
 	)
 		return null;
-	if (!/^.+\.wasm(?:\.sha256)?$/.test(tail.at(-1)!)) return null;
 	return (
 		'/' +
 		parts
 			.map((part) => encodeURIComponent(part).replaceAll('%40', '@'))
 			.join('/')
 	);
-}
-
-export function mirroredDownload(input: string): string {
-	const url = new URL(input);
-	if (
-		url.origin !== downloadOrigin ||
-		url.username ||
-		url.password ||
-		url.search ||
-		url.hash
-	)
-		throw new Error('Unexpected public download URL.');
-	// Check the original spelling as well, before URL's dot-segment normalization.
-	const rawPath = input.slice(input.indexOf('/', input.indexOf('://') + 3));
-	const path = downloadPath(rawPath);
-	if (!path)
-		throw new Error('Expected a concrete versioned public download path.');
-	return mirrorPrefix + path;
 }

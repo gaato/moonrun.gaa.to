@@ -2,15 +2,13 @@ import { expect, it, vi } from 'vitest';
 import {
 	bundleIndexPath,
 	bundledPath,
-	cliIndexEndpoint,
 	cliProgramPath,
-	fetchCliIndex,
 	fetchCommandIndex,
 	filterCliIndex,
 	parseBundleIndex
 } from './cli-index';
 
-it('keeps only valid non-yanked versioned CLI coordinates, stripping registry metadata', () => {
+it('keeps only valid non-yanked versioned CLI coordinates, stripping other fields', () => {
 	expect(
 		filterCliIndex([
 			{ name: 'cli/sh', version: '1.0.0', description: 'irrelevant' },
@@ -32,26 +30,6 @@ it('keeps only valid non-yanked versioned CLI coordinates, stripping registry me
 		'/cli/sh@1.0.0/sh.wasm'
 	);
 });
-it('loads the small same-origin index, bypassing the browser HTTP cache', async () => {
-	const fetcher = vi.fn<typeof fetch>(async () =>
-		Response.json([{ name: 'cli/sh', version: '1.0.0' }])
-	);
-	expect(await fetchCliIndex(undefined, fetcher)).toEqual([
-		{ name: 'cli/sh', version: '1.0.0' }
-	]);
-	expect(fetcher).toHaveBeenCalledWith(cliIndexEndpoint, {
-		signal: undefined,
-		cache: 'no-store'
-	});
-});
-it('reports failed or malformed index responses', async () => {
-	await expect(
-		fetchCliIndex(undefined, async () => new Response('', { status: 503 }))
-	).rejects.toThrow('503');
-	await expect(
-		fetchCliIndex(undefined, async () => Response.json({}))
-	).rejects.toThrow('Invalid CLI index');
-});
 const sha256 = 'a'.repeat(64);
 it('keeps bundled entries with a digest and size, stripping the source URL', () => {
 	expect(
@@ -66,7 +44,7 @@ it('keeps bundled entries with a digest and size, stripping the source URL', () 
 		'/_commands/sh.wasm'
 	);
 });
-it('reads the static bundle index first, without a Worker request', async () => {
+it('reads the static bundle index, without a Worker request', async () => {
 	const fetcher = vi.fn<typeof fetch>(async () =>
 		Response.json([{ name: 'cli/sh', version: '0.2.1', sha256, size: 10 }])
 	);
@@ -79,17 +57,8 @@ it.each([
 	['missing', () => new Response('', { status: 404 })],
 	['the SPA fallback', () => new Response('<!doctype html>')],
 	['empty', () => Response.json([])]
-])('falls back to the live index when the bundle is %s', async (_, bundle) => {
-	const fetcher = vi.fn<typeof fetch>(async (input) =>
-		String(input) === bundleIndexPath
-			? bundle()
-			: Response.json([{ name: 'cli/sh', version: '1.0.0' }])
-	);
-	expect(await fetchCommandIndex(undefined, fetcher)).toEqual([
-		{ name: 'cli/sh', version: '1.0.0' }
-	]);
-	expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
-		bundleIndexPath,
-		cliIndexEndpoint
-	]);
+])('reports a %s bundle clearly', async (_, bundle) => {
+	await expect(
+		fetchCommandIndex(undefined, async () => bundle())
+	).rejects.toThrow('command bundle');
 });

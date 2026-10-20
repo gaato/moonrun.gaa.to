@@ -115,12 +115,14 @@ jobs:
         env:
           SITE_URL: ${{ vars.PRODUCTION_URL }}
         run: |
+          # The moonx download mirror: cli/sh's published checksum matches the bundle.
+          read -r version digest < <(node -p 'const sh = require("./build/_commands/index.json").find((e) => e.name === "cli/sh"); sh.version + " " + sh.sha256')
           check() {
             curl --fail --silent --show-error --max-time 20 "$SITE_URL/" | grep -q '/_app/' &&
               curl --fail --silent --show-error --max-time 20 "$SITE_URL/_commands/index.json" |
                 cmp -s - build/_commands/index.json &&
-              curl --fail --silent --show-error --max-time 20 "$SITE_URL/_mooncakes/cli-index" |
-                grep -q '"cli/sh"'
+              curl --fail --silent --show-error --max-time 20 "$SITE_URL/_mooncakes/prebuild/cli/sh@$version/sh.wasm.sha256" |
+                grep -q "$digest"
           }
           for attempt in {1..12}; do
             if check; then

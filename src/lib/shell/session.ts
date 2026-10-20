@@ -2,13 +2,17 @@ import { mountServer } from './mount-bridge';
 import type {
 	BrowserDirectoryHandle,
 	MountProvider,
+	ResolvedCommand,
 	RunOutcome
 } from 'moonrun-js/browser';
 import type { AddedFile, ShellRequest, ShellReply } from './protocol';
 export interface SessionOptions {
 	wasm: Uint8Array;
-	/** Fallback for names the filesystem PATH search does not find. */
-	resolveCommand: (name: string) => Promise<Uint8Array | undefined>;
+	/** Fallback for names the filesystem PATH search does not find (moonx). */
+	resolveCommand: (
+		name: string,
+		args: readonly string[]
+	) => Promise<ResolvedCommand | undefined>;
 	output: (bytes: Uint8Array, prompt?: '$ ' | '> ') => void;
 	/** Called after added files were written into /work (or failed). */
 	added?: (names: string[], failures: string[]) => void;
@@ -86,9 +90,9 @@ export function startSession({
 			cleanup();
 			fail(new Error(data.message));
 		} else if (data.type === 'resolve') {
-			void resolveCommand(data.name).then(
-				(bytes) => {
-					if (!closing) send({ type: 'resolved', id: data.id, wasm: bytes });
+			void resolveCommand(data.name, data.args).then(
+				(command) => {
+					if (!closing) send({ type: 'resolved', id: data.id, command });
 				},
 				() => {
 					if (!closing) send({ type: 'resolved', id: data.id, failed: true });

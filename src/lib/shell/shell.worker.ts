@@ -2,7 +2,8 @@
 import {
 	directoryHandleProvider,
 	runInWorker,
-	type BrowserRunHandle
+	type BrowserRunHandle,
+	type ResolvedCommand
 } from 'moonrun-js/browser';
 import type { AddedFile, ShellRequest, ShellReply } from './protocol';
 import { mountProxy } from './mount-bridge';
@@ -66,7 +67,10 @@ async function download(id: number) {
 let next = 0;
 const resolutions = new Map<
 	number,
-	{ resolve(value: Uint8Array | undefined): void; reject(error: Error): void }
+	{
+		resolve(value: ResolvedCommand | undefined): void;
+		reject(error: Error): void;
+	}
 >();
 scope.onmessage = async ({ data }: MessageEvent<ShellRequest>) => {
 	if (data.type === 'stop') {
@@ -79,7 +83,7 @@ scope.onmessage = async ({ data }: MessageEvent<ShellRequest>) => {
 		const pending = resolutions.get(data.id);
 		resolutions.delete(data.id);
 		if (data.failed) pending?.reject(new Error('Command download failed.'));
-		else pending?.resolve(data.wasm);
+		else pending?.resolve(data.command);
 	} else if (data.type === 'signal') {
 		if (running && data.number === 2)
 			interruptCommand(running, activity.running);
@@ -132,11 +136,11 @@ scope.onmessage = async ({ data }: MessageEvent<ShellRequest>) => {
 						reply({ type: 'output', bytes: visible, prompt: activity.prompt });
 				},
 				// Only names missing from the filesystem PATH reach the page resolver.
-				resolveCommand: (name) =>
+				resolveCommand: (name, args) =>
 					new Promise((resolve, reject) => {
 						const id = ++next;
 						resolutions.set(id, { resolve, reject });
-						reply({ type: 'resolve', id, name });
+						reply({ type: 'resolve', id, name, args: [...args] });
 					})
 			});
 			const outcome = await running;

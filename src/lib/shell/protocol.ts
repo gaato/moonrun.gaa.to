@@ -1,5 +1,9 @@
 import type { MountCall, MountReply } from './mount-bridge';
-import type { BrowserDirectoryHandle, RunOutcome } from 'moonrun-js/browser';
+import type {
+	BrowserDirectoryHandle,
+	ResolvedCommand,
+	RunOutcome
+} from 'moonrun-js/browser';
 export interface AddedFile {
 	name: string;
 	bytes: Uint8Array;
@@ -21,11 +25,16 @@ export type ShellRequest =
 	| { type: 'download'; id: number }
 	| { type: 'folder'; handle: BrowserDirectoryHandle }
 	| { type: 'mounted'; id: number; result: MountReply }
-	| { type: 'resolved'; id: number; wasm?: Uint8Array; failed?: boolean };
+	| {
+			type: 'resolved';
+			id: number;
+			command?: ResolvedCommand;
+			failed?: boolean;
+	  };
 export type ShellReply =
 	| { type: 'mount'; id: number; mount: string; request: MountCall }
 	| { type: 'output'; bytes: Uint8Array; prompt?: '$ ' | '> ' }
-	| { type: 'resolve'; id: number; name: string }
+	| { type: 'resolve'; id: number; name: string; args: string[] }
 	| { type: 'added'; names: string[]; failures: string[] }
 	| { type: 'archive'; id: number; bytes?: Uint8Array; error?: string }
 	| { type: 'written'; id: number; error?: string }
