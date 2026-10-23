@@ -195,11 +195,11 @@ function registry() {
 	const digest = createHash('sha256').update(wasm).digest('hex');
 	const routes = new Map<string, () => Response>([
 		[
-			'https://mooncakes.io/api-new/v0/modules/gaato/kbbi',
+			'https://mooncakes.io/api/v0/modules/gaato/kbbi',
 			() => Response.json({ latest_version: '0.1.6' })
 		],
 		[
-			'https://mooncakes.io/api-new/v0/modules/a/b/v2',
+			'https://mooncakes.io/api/v0/modules/a/b/v2',
 			() => Response.json({ latest_version: '1.5.0' })
 		],
 		[
@@ -241,7 +241,7 @@ it('resolves the latest version once per session and replaces the moonx child', 
 		argv0: 'kbbi'
 	});
 	expect(r.fetcher.mock.calls.map(([url]) => String(url))).toEqual([
-		'https://mooncakes.io/api-new/v0/modules/gaato/kbbi',
+		'https://mooncakes.io/api/v0/modules/gaato/kbbi',
 		'/_mooncakes/prebuild/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm.sha256',
 		'/_mooncakes/prebuild/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm'
 	]);
@@ -276,13 +276,13 @@ it('reports a checksum mismatch and retries transient failures in the same sessi
 		'/_mooncakes/prebuild/gaato/kbbi@0.1.6/cmd/kbbi/kbbi.wasm.sha256'
 	);
 	r.routes.set(
-		'https://mooncakes.io/api-new/v0/modules/gaato/kbbi',
+		'https://mooncakes.io/api/v0/modules/gaato/kbbi',
 		() => new Response('', { status: 503 })
 	);
 	const fresh = createMoonx({ fetcher: r.fetcher });
 	const failed = await fresh(['gaato/kbbi/cmd/kbbi']);
 	expect(message(failed).text).toContain('HTTP 503');
-	r.routes.set('https://mooncakes.io/api-new/v0/modules/gaato/kbbi', () =>
+	r.routes.set('https://mooncakes.io/api/v0/modules/gaato/kbbi', () =>
 		Response.json({ latest_version: '0.1.6' })
 	);
 	r.routes.set(

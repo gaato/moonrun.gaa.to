@@ -91,7 +91,7 @@ const env = { HOME: '/work', PATH: shellPath };
 // A fake registry for moonx: one module whose cmd/hello package is really cli/echo.
 const registryFetch = vi.fn<typeof fetch>(async (input) => {
 	const url = String(input);
-	if (url === 'https://mooncakes.io/api-new/v0/modules/test/tool')
+	if (url === 'https://mooncakes.io/api/v0/modules/test/tool')
 		return Response.json({ latest_version: '1.0.0' });
 	const hello = '/_mooncakes/prebuild/test/tool@1.0.0/cmd/hello/hello.wasm';
 	if (url === hello) return new Response(new Uint8Array(program('echo')));
@@ -168,7 +168,9 @@ it('runs a registry package through moonx with its own arguments, in a pipeline'
 	]);
 	// The latest version and verified bytes are fetched once for the session.
 	expect(
-		registryFetch.mock.calls.filter(([url]) => String(url).includes('api-new'))
+		registryFetch.mock.calls.filter(([url]) =>
+			String(url).includes('mooncakes.io/api/v0/modules/')
+		)
 	).toHaveLength(1);
 	expect(
 		registryFetch.mock.calls.filter(([url]) => String(url).endsWith('.wasm'))

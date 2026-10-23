@@ -41,7 +41,7 @@ On load the page reads `/_commands/index.json`, loads sh, then preloads every co
 
 ## Command bundle
 
-`scripts/prepare-commands.ts` reads the modules list (`https://mooncakes.io/api-new/v0/modules`), keeps non-yanked, concretely versioned `cli/*` entries, and for each fetches `https://download.mooncakes.io/prebuild/cli/<name>@<version>/<name>.wasm.sha256`. A 404 means no prebuild (for example cli/core) and is skipped. Otherwise it downloads the wasm with a fixed User-Agent, verifies SHA-256, the wasm magic and the 25 MiB Cloudflare asset limit, and writes `static/_commands/<name>.wasm` plus `index.json` (name, version, sha256, size, source URL). Files already present with the right digest are reused; stale ones are removed. Any other failure fails the build. `static/_commands/` is a gitignored build output. `pnpm build` runs the script and `scripts/check-artifacts.ts` rechecks every bundled file.
+`scripts/prepare-commands.ts` reads the modules list (`https://mooncakes.io/api/v0/modules`), keeps non-yanked, concretely versioned `cli/*` entries, and for each fetches `https://download.mooncakes.io/prebuild/cli/<name>@<version>/<name>.wasm.sha256`. A 404 means no prebuild (for example cli/core) and is skipped. Otherwise it downloads the wasm with a fixed User-Agent, verifies SHA-256, the wasm magic and the 25 MiB Cloudflare asset limit, and writes `static/_commands/<name>.wasm` plus `index.json` (name, version, sha256, size, source URL). Files already present with the right digest are reused; stale ones are removed. Any other failure fails the build. `static/_commands/` is a gitignored build output. `pnpm build` runs the script and `scripts/check-artifacts.ts` rechecks every bundled file.
 
 ## Downloads and the Worker
 
@@ -57,7 +57,7 @@ The browser verifies mirrored wasm against its sibling `.sha256`; cache hits rec
 
 - Options before the input: `-v`/`--verbose` (accepted, no extra output), `--target wasm`, `-h`, `-V`. `--experimental-policy` and `--target native` print that they are not supported in the browser and exit 2; unknown options give a clap-style usage error (2). One leading `--` after the input is dropped.
 - Coordinates parse as moon does: `owner/module/pkg/path[@version]`, `owner/module@version/pkg/path`, `@latest`, no version (latest), a module root package `owner/module[@version]`, and `/vN` major-version modules. Wildcards (`...`) are rejected, and `.mbtx` scripts are not supported because there is no compiler in the browser.
-- The latest version comes from `https://mooncakes.io/api-new/v0/modules/<owner>/<module>` (`latest_version`), once per shell session.
+- The latest version comes from `https://mooncakes.io/api/v0/modules/<owner>/<module>` (`latest_version`), once per shell session.
 - The artifact is `prebuild/<module>@<version>/[<package>/]<stem>.wasm` (stem: the last package segment, or of the module name for the root package), fetched with its `.sha256` through the mirror, verified and cached by URL and digest.
 - Errors print moon-style (`Error: Module \`no/such\` not found in registry`, `Error: Prebuilt wasm asset does not exist`, `Error: Invalid package coordinate …`with`Caused by:`) and exit 255, like moonx. They come from a tiny WASI program generated in the page (`messageWasm`) that writes the message and calls `proc_exit`, because cli/sh 0.2.1 cannot redirect to stderr (`>&2` is parsed as background execution).
 

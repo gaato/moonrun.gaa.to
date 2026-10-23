@@ -4,7 +4,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const modulesEndpoint = 'https://mooncakes.io/api-new/v0/modules';
+export const modulesEndpoint = 'https://mooncakes.io/api/v0/modules';
 export const downloadOrigin = 'https://download.mooncakes.io';
 // CloudFront rejects requests without a User-Agent.
 export const userAgent = 'moonrun.gaa.to/0.1 (+https://moonrun.gaa.to)';

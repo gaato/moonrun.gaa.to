@@ -5,7 +5,7 @@ import type { ResolvedCommand } from 'moonrun-js/browser';
 import { downloadPath, mirrorPrefix } from '../downloads';
 import { browserCache, verifiedWasm, type VerifiedCache } from '../integrity';
 
-export const modulesEndpoint = 'https://mooncakes.io/api-new/v0/modules';
+export const modulesEndpoint = 'https://mooncakes.io/api/v0/modules';
 
 export interface Coordinate {
 	owner: string;
