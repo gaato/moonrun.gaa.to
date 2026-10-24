@@ -119,8 +119,8 @@ importers:
         specifier: ^0.8.3
         version: 0.8.3
       moonrun-js:
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.1.5
+        version: 0.1.5
     devDependencies:
       '@sveltejs/adapter-static':
         specifier: ^3.0.10
@@ -1252,8 +1252,8 @@ packages:
     resolution: {integrity: sha512-8Canhy6g9+vAhqMc0o80YphqYIwpiA3aAp8aX+uDXU7J/qbUeoZzcII9c2V1P4uT/eHD4SB93qet1o1bRY3BuQ==}
     engines: {node: '>=22.0.0'}
 
-  moonrun-js@0.1.4:
-    resolution: {integrity: sha512-Vz8Ht1jd5BbDCzO0EgabnGbFutiniZVYN+ZOF+ihjsXHpdrDfIeIpDmdgop/1beS6HcOa0x5RYPIzbKgLlX23Q==}
+  moonrun-js@0.1.5:
+    resolution: {integrity: sha512-eKzt02tejgExNnBmWpNzDuLmx6VKZps0zkJLyJ+XHvk1Cf56AamPIcKlZna0cDRmBO00aNEMa8D1C5XAXoBz8w==}
     engines: {node: '>=24'}
     hasBin: true
 
@@ -2459,7 +2459,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  moonrun-js@0.1.4:
+  moonrun-js@0.1.5:
     dependencies:
       '@noble/ciphers': 2.4.0
 

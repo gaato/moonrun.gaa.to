@@ -21,6 +21,11 @@ mise exec -- pnpm exec wrangler deploy --dry-run
 
 `pnpm build` copies the prebuilt moonrun-js browser assets, bundles the cli/\* commands (`pnpm prepare:commands`, see below), builds the site, writes the CSP `_headers` and checks the output. `pnpm dev` also bundles the commands; `pnpm dev` and `pnpm preview` serve the frontend only, and moonx downloads need the mirror Worker, so use Wrangler locally. `pnpm smoke` starts a temporary Wrangler on a free loopback port and checks with curl: the shell at `/`, any other path and `/?cmd=`, the `/shell` redirect, the static bundle, a real mirrored wasm/checksum, removed routes and rejected paths. It then stops Wrangler. It needs network access to the public download host. Browser verification is done separately.
 
+To verify a runner change before its npm release, build the sibling `moonrun-js`
+checkout and set `MOONRUN_JS_BROWSER_DIR=../moonrun-js/dist/browser` when running
+`pnpm verify`. This copies those local browser assets into the site; without the
+override, the installed package selected by the lockfile remains the build input.
+
 ## The shell
 
 Every path serves the shell; `/shell` redirects to `/` (static `_redirects`). It runs the bundled `cli/sh -i` with streaming stdin and wasm child processes in a supervisor Worker. xterm.js provides the terminal, with local echo, grapheme backspace, Ctrl+L, a local `clear`, Ctrl+C and Ctrl+D. At an idle prompt Ctrl+C only clears the input line. After a line is sent and until sh prompts again, Ctrl+C sends SIGINT to sh, which cli/sh 0.2.1 does not catch, so it can end the shell; restart when it does. The page sets PS1/PS2 with a per-session marker to recognize prompts; leave those variables intact.
