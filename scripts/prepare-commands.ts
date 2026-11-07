@@ -63,6 +63,33 @@ export function checksumDigest(text: string): string {
 const sha256 = (bytes: Uint8Array) =>
 	createHash('sha256').update(bytes).digest('hex');
 
+// Reads at most `limit` bytes; undefined (and the body cancelled) once larger.
+export async function readLimited(
+	response: Response,
+	limit: number
+): Promise<Uint8Array | undefined> {
+	if (Number(response.headers.get('content-length')) > limit) {
+		await response.body?.cancel();
+		return undefined;
+	}
+	const chunks: Uint8Array[] = [];
+	let size = 0;
+	if (response.body)
+		for await (const chunk of response.body) {
+			size += chunk.byteLength;
+			// Leaving the loop cancels the stream.
+			if (size > limit) return undefined;
+			chunks.push(chunk);
+		}
+	const bytes = new Uint8Array(size);
+	let offset = 0;
+	for (const chunk of chunks) {
+		bytes.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return bytes;
+}
+
 export async function prepareCommands({
 	directory,
 	fetcher = fetch,
@@ -99,20 +126,23 @@ export async function prepareCommands({
 			let bytes: Uint8Array | undefined;
 			try {
 				const existing = new Uint8Array(await readFile(file));
-				if (sha256(existing) === digest) bytes = existing;
+				if (existing.byteLength <= maxAssetBytes && sha256(existing) === digest)
+					bytes = existing;
 			} catch {
 				/* Download below. */
 			}
 			if (!bytes) {
 				const response = await get(source);
 				if (!response.ok) throw new Error(`${source}: HTTP ${response.status}`);
-				bytes = new Uint8Array(await response.arrayBuffer());
+				bytes = await readLimited(response, maxAssetBytes);
+				if (!bytes) {
+					log(`skip ${name}@${version}: larger than the 25 MiB asset limit`);
+					continue;
+				}
 				if (sha256(bytes) !== digest)
 					throw new Error(`${source}: SHA-256 mismatch`);
 				if (![0, 97, 115, 109].every((byte, i) => bytes![i] === byte))
 					throw new Error(`${source}: not a wasm module`);
-				if (bytes.byteLength > maxAssetBytes)
-					throw new Error(`${source}: exceeds the 25 MiB asset limit`);
 				await writeFile(file, bytes);
 				log(`downloaded ${name}@${version} (${bytes.byteLength} bytes)`);
 			}

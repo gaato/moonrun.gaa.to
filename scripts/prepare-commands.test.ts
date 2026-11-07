@@ -5,8 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
 	cliModules,
+	maxAssetBytes,
 	modulesEndpoint,
 	prepareCommands,
+	readLimited,
 	userAgent
 } from './prepare-commands';
 
@@ -114,6 +116,49 @@ it('reuses verified files, replaces corrupt ones and removes stale commands', as
 		wasm(2)
 	);
 	expect(await readdir(directory)).not.toContain('gone.wasm');
+});
+it('skips executables over the asset limit without reading them', async () => {
+	const r = registry(files);
+	const url = prebuild + '/cli/cat@0.2.1/cat.wasm';
+	const cancel = vi.fn();
+	r.routes.set(
+		url,
+		() =>
+			new Response(new ReadableStream({ cancel }), {
+				headers: { 'Content-Length': String(maxAssetBytes + 1) }
+			})
+	);
+	await writeFile(join(directory, 'cat.wasm'), wasm(9));
+	const log = vi.fn();
+	const index = await prepareCommands({ directory, fetcher: r.fetcher, log });
+	expect(index.map((entry) => entry.name)).toEqual(['cli/sh']);
+	expect(cancel).toHaveBeenCalled();
+	expect(log).toHaveBeenCalledWith(
+		'skip cli/cat@0.2.1: larger than the 25 MiB asset limit'
+	);
+	expect((await readdir(directory)).sort()).toEqual(['index.json', 'sh.wasm']);
+});
+it('stops reading a body without Content-Length once it exceeds the limit', async () => {
+	const stream = (sizes: number[]) =>
+		new Response(
+			new ReadableStream(
+				{
+					pull(controller) {
+						const size = sizes.shift();
+						if (size === undefined) controller.close();
+						else controller.enqueue(new Uint8Array(size).fill(size));
+					}
+				},
+				// Pull only on read, so the remaining sizes show what was read.
+				{ highWaterMark: 0 }
+			)
+		);
+	expect(await readLimited(stream([2, 3]), 5)).toEqual(
+		new Uint8Array([2, 2, 3, 3, 3])
+	);
+	const pulled = [2, 4, 1];
+	expect(await readLimited(stream(pulled), 5)).toBeUndefined();
+	expect(pulled).toEqual([1]);
 });
 it.each([
 	['a checksum mismatch', 'SHA-256 mismatch'],
